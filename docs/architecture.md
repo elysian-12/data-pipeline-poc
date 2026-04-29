@@ -33,38 +33,36 @@ flowchart LR
 
 ## C4 Level 2 — Containers
 
+Linear data flow left-to-right; the Typer CLI orchestrates each stage (dotted
+arrows show "triggers", solid arrows show data movement).
+
 ```mermaid
 flowchart LR
     Operator([Operator])
+    CLI[Typer CLI]
+    Ingest[Ingest<br/>httpx · pydantic]
+    DBT[dbt-core]
+    Analysis[Analysis<br/>polars]
+    Massive[(Massive)]
+    CoinGecko[(CoinGecko)]
+    Bronze[(Bronze<br/>Parquet · fsspec)]
+    DuckDB[(DuckDB<br/>silver · gold · meta)]
+    Outputs[(outputs/<br/>DATA_REPORTS/)]
     Analyst([Analyst])
 
-    subgraph ext [External APIs]
-        Massive[(Massive)]
-        CoinGecko[(CoinGecko)]
-    end
-
-    subgraph poc [Data Platform PoC]
-        CLI[Typer CLI]
-        Ingest[Ingest<br/>httpx · pydantic]
-        Bronze[(Bronze<br/>Parquet · fsspec)]
-        DBT[dbt-core]
-        DuckDB[(DuckDB<br/>silver · gold · meta)]
-        Analysis[Analysis<br/>polars]
-        Outputs[(outputs/ + DATA_REPORTS/)]
-    end
-
     Operator -->|make / cron| CLI
-    CLI --> Ingest
-    CLI --> DBT
-    CLI --> Analysis
-    Ingest -->|HTTPS| Massive
-    Ingest -->|HTTPS| CoinGecko
-    Ingest --> Bronze
-    Ingest -->|MERGE| DuckDB
+    CLI -.triggers.-> Ingest
+    CLI -.triggers.-> DBT
+    CLI -.triggers.-> Analysis
+
+    Massive -->|HTTPS| Ingest
+    CoinGecko -->|HTTPS| Ingest
+    Ingest -->|write| Bronze
+    Bronze -->|read + MERGE| DuckDB
     DBT --> DuckDB
-    Analysis --> DuckDB
+    DuckDB --> Analysis
     Analysis --> Outputs
-    Analyst --> Outputs
+    Outputs --> Analyst
 
     classDef person fill:#1f3a5f,stroke:#4a7ab8,color:#fff
     classDef sys fill:#2d4a6e,stroke:#5a8bc4,color:#fff
@@ -94,24 +92,30 @@ flowchart LR
 flowchart LR
     CLI[cli.py<br/>ingest / backfill-gaps]
     Orch[orchestrator.run_ingest]
-    Fetchers[per-source fetchers<br/>massive · coingecko · synthetic]
+    HttpFetch[massive · coingecko<br/>HTTP fetchers]
+    Synth[synthetic<br/>USD row generator]
     Client[client.ProviderClient<br/>httpx + tenacity + semaphore]
     Bronze[storage.bronze.write_bronze]
+    ReadBronze[storage.bronze.read_bronze]
     Silver[storage.warehouse.merge_into_silver]
 
     CLI --> Orch
-    Orch -->|fetch| Fetchers
-    Orch -->|write| Bronze
-    Orch -->|merge| Silver
-    Fetchers --> Client
+    Orch -.calls.-> HttpFetch
+    Orch -.calls.-> Synth
+    HttpFetch --> Client
+    HttpFetch -->|rows| Orch
+    Synth -->|rows| Orch
+    Orch -->|rows| Bronze
+    Bronze -->|parquet on disk| ReadBronze
+    ReadBronze -->|pyarrow table| Silver
 
     classDef sys fill:#2d4a6e,stroke:#5a8bc4,color:#fff
     classDef io fill:#3a5a3a,stroke:#6aa86a,color:#fff
-    class CLI,Orch,Fetchers,Client sys
-    class Bronze,Silver io
+    class CLI,Orch,HttpFetch,Synth,Client sys
+    class Bronze,ReadBronze,Silver io
 ```
 
-`run_ingest` runs four steps in order: **resolve window** (explicit > incremental > lookback) → **fetch** (per-provider, gathered concurrently) → **write bronze** (partitioned Parquet) → **merge silver** (`INSERT … ON CONFLICT DO UPDATE`). Run state persists to `meta.pipeline_runs` via `RunContext`; structured events log to `logs/pipeline-*.log` via `get_logger()`.
+`run_ingest` runs four steps in order: **resolve window** (explicit > incremental > lookback) → **fetch** (HTTP fetchers `gather()` concurrently per provider; `synthetic` short-circuits to hardcoded USD=1.0 rows without any HTTP call) → **write bronze** (partitioned Parquet) → **merge silver** (read each just-written parquet back via `read_bronze`, concat with `promote_options="default"` to reconcile null-typed columns across partitions, then `INSERT … ON CONFLICT DO UPDATE`). Bronze on disk is the source of truth — a partition that fails to write never reaches silver. Run state persists to `meta.pipeline_runs` via `RunContext`; structured events log to `logs/pipeline-*.log` via `get_logger()`.
 
 ---
 
@@ -142,6 +146,8 @@ sequenceDiagram
         CoinGecko-->>Ingest: {prices, total_volumes}
     end
     Ingest->>Bronze: write_bronze (overwrite by ingested_date)
+    Ingest->>Bronze: read_bronze (re-read each partition just written)
+    Bronze-->>Ingest: pyarrow tables (concat with promote_options="default")
     Ingest->>Silver: merge_into_silver — INSERT ... ON CONFLICT DO UPDATE (last-write-wins)
     CLI->>dbt: dbt seed (if stale), then dbt run, then dbt test
     dbt->>Silver: SELECT * (staging view)

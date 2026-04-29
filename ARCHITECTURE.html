@@ -1583,12 +1583,12 @@ const STAGES = {
     components: [
       { name: "merge_into_silver", role: "function", cap: "Last-write-wins upsert · idempotent.",
         path: "src/pipeline/storage/warehouse.py",
-        summary: "Last-write-wins upsert from a bronze Arrow batch into <code>silver.stg_prices</code>. PK is <code>(symbol, date)</code>; the <code>WHERE EXCLUDED.ingested_at &gt; silver.stg_prices.ingested_at</code> guard on the <code>ON CONFLICT DO UPDATE</code> clause makes the merge safe to replay in any order.",
+        summary: "Upserts an Arrow batch into <code>silver.stg_prices</code>. The orchestrator writes bronze parquet first, then re-reads each file via <code>read_bronze</code> and feeds the concatenated table here — bronze on disk is the source of truth, not the in-memory rows. PK is <code>(symbol, date)</code>; the <code>WHERE EXCLUDED.ingested_at &gt; silver.stg_prices.ingested_at</code> guard makes the merge safe to replay in any order.",
         highlights: [
-          "<strong>Idempotent</strong> — identical re-runs are no-ops. A second <code>MERGE</code> with the same <code>ingested_at</code> fails the <code>WHERE</code> guard and silently skips.",
-          "<strong>Out-of-order safe</strong> — if a stale batch arrives after a fresher one (retried worker, backfill race), its older <code>ingested_at</code> loses the comparison and doesn't overwrite.",
-          "<strong>Zero-copy Arrow</strong> — <code>conn.register('bronze_in', bronze_table)</code> exposes the Arrow table to DuckDB without serialising. Single-digit-MB batches merge in microseconds.",
-          "<strong>Explicit transaction</strong> — the single-statement <code>MERGE</code> is auto-commit atomic, but wrapping in <code>BEGIN</code> / <code>COMMIT</code> + <code>ROLLBACK</code> on exception makes the boundary visible and future-proofs the call site if it grows to span multiple statements.",
+          "<strong>Bronze is load-bearing</strong> — a failed parquet write means those rows never reach silver, even though they were in memory during the run.",
+          "<strong>Idempotent + out-of-order safe</strong> — identical re-runs and stale batches both fail the <code>WHERE</code> guard and silently skip.",
+          "<strong>Zero-copy Arrow into DuckDB</strong> — <code>conn.register('bronze_in', table)</code> exposes the Arrow table without re-serialising.",
+          "<strong>Explicit transaction</strong> — <code>BEGIN</code> / <code>COMMIT</code> / <code>ROLLBACK</code> on exception; future-proofs the call site if it grows beyond a single statement.",
         ],
         code: `<span class="kw">def</span> <span class="fn">merge_into_silver</span>(conn, bronze_table):
     conn.register(<span class="str">"bronze_in"</span>, bronze_table)

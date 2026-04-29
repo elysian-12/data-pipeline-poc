@@ -12,7 +12,7 @@ rather than internal function shapes. Three layers:
 | **Snapshot** | `tests/snapshot/` | End-to-end stability of analysis outputs on a pinned synthetic dataset. Catches silent regressions from library upgrades or formula drift. |
 | **Live** | `make run` against real Massive / CoinGecko | Not in `pytest`; verified manually + via CI smoke-run. |
 
-**Run:** `uv run pytest -q` (35 tests, ≈3s on DuckDB in-memory).
+**Run:** `uv run pytest -q` (38 tests, ≈3s on DuckDB in-memory).
 
 Shared fixtures in [tests/conftest.py](../tests/conftest.py):
 

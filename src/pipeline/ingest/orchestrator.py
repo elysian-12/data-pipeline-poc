@@ -196,15 +196,24 @@ def run_ingest(
 
     ingested_date = datetime.now(UTC).date()
     with timed("ingest:write_bronze", rows=len(all_rows)):
-        _write_bronze_partitions(all_rows, settings=settings, ingested_date=ingested_date)
+        bronze_paths = _write_bronze_partitions(
+            all_rows, settings=settings, ingested_date=ingested_date
+        )
 
-    # Silver MERGE
-    if not all_rows:
+    # Silver MERGE — read what we just wrote to bronze. The parquet files are
+    # the source of truth: a failed bronze write means silver never sees those
+    # rows, even though they sat in memory during the run.
+    if not bronze_paths:
         return effective_start, effective_end, 0
 
-    table = pa.Table.from_pylist([r.model_dump() for r in all_rows])
+    tables = [bronze_io.read_bronze(p, settings) for p in bronze_paths.values()]
+    # promote_options="default" reconciles null-typed columns across partitions
+    # — CoinGecko BTC writes open/high/low/vwap/trade_count as all-null, while
+    # Massive equities/FX write them as double/int. Without promotion, concat
+    # raises ArrowInvalid on schema mismatch.
+    table = pa.concat_tables(tables, promote_options="default")
     with (
-        timed("ingest:merge_silver", rows=len(all_rows)),
+        timed("ingest:merge_silver", rows=table.num_rows),
         warehouse.connect(settings) as conn,
     ):
         inserted = warehouse.merge_into_silver(conn, table)

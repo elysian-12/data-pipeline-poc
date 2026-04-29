@@ -2,7 +2,7 @@ version: 2
 
 sources:
   - name: silver
-    description: "Python-managed conformed daily prices. Written via MERGE from bronze Parquet."
+    description: "Python-managed conformed daily prices. Written via MERGE from bronze Parquet (orchestrator reads back the parquet files written that run, then INSERTs ON CONFLICT into silver.stg_prices)."
     schema: silver
     tables:
       - name: stg_prices

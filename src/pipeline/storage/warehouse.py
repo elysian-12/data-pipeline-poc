@@ -40,6 +40,11 @@ def bootstrap(conn: duckdb.DuckDBPyConnection) -> None:
 def merge_into_silver(conn: duckdb.DuckDBPyConnection, bronze_table: pa.Table) -> int:
     """Last-write-wins MERGE on (symbol, date). Returns row count of the incoming batch.
 
+    `bronze_table` is the contents of bronze Parquet read back via
+    `bronze_io.read_bronze` — see [orchestrator.run_ingest]. Tests bypass the
+    parquet round-trip and pass a constructed Arrow table directly; that's
+    fine because what's exercised here is the MERGE semantics, not the IO.
+
     Wrapped in an explicit `BEGIN TRANSACTION / COMMIT` (rollback on exception).
     The single-statement MERGE is already auto-commit atomic in DuckDB; the
     explicit transaction makes the atomicity boundary visible and future-proofs

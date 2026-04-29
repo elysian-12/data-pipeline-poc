@@ -5,7 +5,10 @@
 CREATE SCHEMA IF NOT EXISTS silver;
 CREATE SCHEMA IF NOT EXISTS meta;
 
--- Silver: conformed, deduped daily prices. Populated by Python MERGE from bronze Parquet.
+-- Silver: conformed, deduped daily prices. Populated by Python MERGE
+-- from bronze Parquet — the orchestrator writes bronze first, then reads
+-- those parquet files back and feeds them into the MERGE. Bronze on disk
+-- is the source of truth for what reaches silver.
 CREATE TABLE IF NOT EXISTS silver.stg_prices (
     source              VARCHAR NOT NULL,
     asset_type          VARCHAR NOT NULL,
