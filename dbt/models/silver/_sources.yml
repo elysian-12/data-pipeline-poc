@@ -1,0 +1,27 @@
+version: 2
+
+sources:
+  - name: silver
+    description: "Python-managed conformed daily prices. Written via MERGE from bronze Parquet."
+    schema: silver
+    tables:
+      - name: stg_prices
+        description: "One row per (symbol, date). Deduplicated, UTC-anchored."
+        loaded_at_field: ingested_at
+        freshness:
+          warn_after: { count: 2, period: day }
+          error_after: { count: 5, period: day }
+        columns:
+          - name: symbol
+            tests: [not_null]
+          - name: date
+            tests: [not_null]
+          - name: close
+            tests: [not_null]
+
+  - name: meta
+    description: "Python-managed pipeline metadata + trading-day calendar."
+    schema: meta
+    tables:
+      - name: nyse_calendar
+        description: "NYSE trading-day calendar seeded by scripts/seed_dim_date.py."

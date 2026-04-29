@@ -1,0 +1,22 @@
+# dbt profiles. Default target is DuckDB; the clickhouse block shows the scale path.
+# DUCKDB_PATH is read from env so dbt and Python share the same file.
+
+data_platform_poc:
+  target: duckdb
+  outputs:
+    duckdb:
+      type: duckdb
+      path: "{{ env_var('DUCKDB_PATH', './data/warehouse.duckdb') }}"
+      threads: 4
+
+    # --- Scale path: drop-in ClickHouse target ---
+    # Uncomment after adding dbt-clickhouse to pyproject.toml and setting CH_* env vars.
+    # clickhouse:
+    #   type: clickhouse
+    #   host: "{{ env_var('CH_HOST', 'localhost') }}"
+    #   port: "{{ env_var('CH_PORT', 8123) | int }}"
+    #   user: "{{ env_var('CH_USER', 'default') }}"
+    #   password: "{{ env_var('CH_PASSWORD', '') }}"
+    #   schema: "{{ env_var('CH_SCHEMA', 'gold') }}"
+    #   secure: false
+    #   threads: 4

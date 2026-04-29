@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-type-test:
+    name: ruff + mypy + pytest + dbt parse
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "0.11.x"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Lint (ruff)
+        run: uv run ruff check src tests
+
+      - name: Format check (ruff)
+        run: uv run ruff format --check src tests
+
+      - name: Type check (mypy --strict)
+        run: uv run mypy src
+
+      - name: Bootstrap warehouse (DuckDB + schema.sql)
+        env:
+          DUCKDB_PATH: ./data/warehouse.duckdb
+          BRONZE_URI: ./data/bronze
+          MASSIVE_API_KEY: dummy-for-ci
+        run: |
+          mkdir -p data logs outputs
+          uv run python scripts/bootstrap_warehouse.py
+
+      - name: dbt deps
+        working-directory: dbt
+        run: uv run dbt deps --profiles-dir .
+
+      - name: dbt parse
+        working-directory: dbt
+        env:
+          DUCKDB_PATH: ../data/warehouse.duckdb
+        run: uv run dbt parse --profiles-dir .
+
+      - name: Run tests (pytest)
+        env:
+          DUCKDB_PATH: ./data/warehouse.duckdb
+          BRONZE_URI: ./data/bronze
+          MASSIVE_API_KEY: dummy-for-ci
+        run: uv run pytest -q

@@ -1,0 +1,129 @@
+version: 2
+
+models:
+  - name: dim_asset_type
+    description: "Asset type lookup: stock | fx | index | crypto."
+    columns:
+      - name: asset_type_id
+        tests: [unique, not_null]
+      - name: name
+        tests: [unique, not_null]
+
+  - name: dim_asset
+    description: "One row per unique asset symbol, with source and completeness metadata."
+    columns:
+      - name: asset_id
+        tests: [unique, not_null]
+      - name: symbol
+        tests: [unique, not_null]
+      - name: asset_type_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset_type')
+              field: asset_type_id
+      - name: price_completeness
+        tests:
+          - accepted_values:
+              values: ['ohlcv', 'close_volume_only']
+      - name: source
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['massive', 'coingecko', 'synthetic']
+      - name: base_ccy
+        tests:
+          - not_null
+          # USD-numéraire invariant — see README "Core assumption".
+          # Must stay ['USD'] unless the analysis layer gains multi-currency support.
+          - accepted_values:
+              values: ['USD']
+
+  - name: dim_date
+    description: "Calendar dimension, one row per observed trade date."
+    columns:
+      - name: date_id
+        tests: [unique, not_null]
+      - name: date
+        tests: [unique, not_null]
+      - name: is_trading_day
+        tests: [not_null]
+
+  - name: fact_daily_price
+    description: "Grain: (asset_id, date_id). OHL nullable."
+    columns:
+      - name: asset_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_id
+      - name: date_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_id
+      - name: close
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 1000000
+              inclusive: false
+      - name: volume
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+      - name: ingested_at
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - asset_id
+            - date_id
+      # OHL sanity: when low/high are present, open and close must lie in [low, high].
+      # SQL three-valued logic skips rows where any operand is NULL — no `where` filter needed.
+      - dbt_utils.expression_is_true:
+          name: fact_daily_price_close_within_low_high
+          expression: "low <= close AND close <= high"
+      - dbt_utils.expression_is_true:
+          name: fact_daily_price_open_within_low_high
+          expression: "low <= open AND open <= high"
+
+  - name: fact_daily_metrics
+    description: "Derived returns, rolling windows, volatility, rel-perf vs BTC."
+    columns:
+      - name: asset_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_asset')
+              field: asset_id
+      - name: date_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_date')
+              field: date_id
+      - name: daily_return
+        # A single-day price move outside [-100%, +100%] is essentially impossible
+        # for liquid assets; catches bronze corruption or ingestion duplication.
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -1
+              max_value: 1
+              inclusive: false
+              config: { where: "daily_return IS NOT NULL" }
+      - name: rolling_vol_30d
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              inclusive: true
+              config: { where: "rolling_vol_30d IS NOT NULL" }
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - asset_id
+            - date_id

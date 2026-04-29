@@ -1,0 +1,57 @@
+# Mirrors .gitignore plus a few build-context-only exclusions.
+# Without this, COPY . . in the Dockerfile drags in .env, the entire
+# .venv (~700 MB), .git history, local DuckDB warehouse, and dev caches.
+
+# Secrets — never bake into the image
+.env
+.env.local
+
+# Local Python venv — the image rebuilds its own via `uv sync`
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+build/
+dist/
+
+# Dev caches
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Git history — not useful at runtime
+.git/
+.gitignore
+.github/
+
+# IDE / OS junk
+.vscode/
+.idea/
+.DS_Store
+
+# Local data artifacts — the container should regenerate its own
+data/
+logs/
+others/
+DATA_REPORTS/
+outputs/
+
+# dbt-generated
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+
+# Snapshot test diffs
+tests/**/_actual_*
+
+# Local agent notes
+.claude/
+CLAUDE.md
+
+# Misc heavy dev-only artifacts that shouldn't ship
+ARCHITECTURE.html
+EXTRAS/
+docs/

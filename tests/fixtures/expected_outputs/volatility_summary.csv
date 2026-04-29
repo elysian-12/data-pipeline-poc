@@ -1,0 +1,4 @@
+symbol,asset_type,daily_return_stdev,n_obs
+AAPL,stock,0.0030041067781033264,365
+BTC,crypto,0.0030041067781033256,365
+C:EURUSD,fx,0.0030041067781033264,365

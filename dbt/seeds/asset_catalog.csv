@@ -1,0 +1,9 @@
+symbol,name,base_ccy,price_completeness
+AAPL,Apple Inc.,USD,ohlcv
+GOOGL,Alphabet Inc. Class A,USD,ohlcv
+MSFT,Microsoft Corp.,USD,ohlcv
+SPY,SPDR S&P 500 ETF Trust,USD,ohlcv
+C:EURUSD,Euro / US Dollar,USD,ohlcv
+C:GBPUSD,British Pound / US Dollar,USD,ohlcv
+USD,US Dollar (synthetic base),USD,close_volume_only
+BTC,Bitcoin,USD,close_volume_only

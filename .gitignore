@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+
+# Environment
+.env
+.env.local
+
+# Data & outputs
+data/
+logs/
+others/
+
+# dbt
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+dbt/.user.yml
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Snapshot test diffs
+tests/**/_actual_*
+
+# Auto memory
+.claude/
+CLAUDE.md

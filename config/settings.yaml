@@ -1,0 +1,101 @@
+# Pipeline configuration. Environment variables (.env) take precedence for secrets & paths.
+# Layout is grouped by concern so new assets / knobs are localized.
+
+run:
+  default_lookback_days: 365          # used when no --start/--end and no prior ingest
+  reference_timezone: UTC
+
+sources:
+  massive:
+    base_url: https://api.massive.com  # docs: https://massive.com/docs
+    rate_limit_per_minute: 5           # free-tier ceiling
+    concurrency: 3                     # semaphore size — tenacity absorbs 429s if we overshoot
+    timeout_seconds: 30
+    max_retries: 2                     # 2 retries + 1 initial = 3 attempts max (exp backoff + jitter)
+  coingecko:
+    base_url: https://api.coingecko.com/api/v3
+    rate_limit_per_minute: 10          # conservative free-tier budget
+    concurrency: 2
+    timeout_seconds: 30
+    max_retries: 2                     # 2 retries + 1 initial = 3 attempts max (exp backoff + jitter)
+
+assets:
+  # symbol         = API symbol (with 'C:' prefix for FX on Massive)
+  # name           = display name
+  # asset_type     = one of: stock | fx | index | crypto
+  # source         = massive | coingecko | synthetic
+  # price_completeness = ohlcv | close_volume_only
+  # base_ccy       = quote currency
+  - symbol: AAPL
+    name: Apple Inc.
+    asset_type: stock
+    source: massive
+    price_completeness: ohlcv
+    base_ccy: USD
+  - symbol: GOOGL
+    name: Alphabet Inc. Class A
+    asset_type: stock
+    source: massive
+    price_completeness: ohlcv
+    base_ccy: USD
+  - symbol: MSFT
+    name: Microsoft Corp.
+    asset_type: stock
+    source: massive
+    price_completeness: ohlcv
+    base_ccy: USD
+  - symbol: SPY
+    name: SPDR S&P 500 ETF Trust
+    asset_type: index
+    source: massive
+    price_completeness: ohlcv
+    base_ccy: USD
+  - symbol: "C:EURUSD"
+    name: Euro / US Dollar
+    asset_type: fx
+    source: massive
+    price_completeness: ohlcv
+    base_ccy: USD
+  - symbol: "C:GBPUSD"
+    name: British Pound / US Dollar
+    asset_type: fx
+    source: massive
+    price_completeness: ohlcv
+    base_ccy: USD
+  - symbol: USD
+    name: US Dollar (synthetic base)
+    asset_type: fx
+    source: synthetic
+    price_completeness: close_volume_only
+    base_ccy: USD
+  - symbol: BTC
+    name: Bitcoin
+    asset_type: crypto
+    source: coingecko
+    price_completeness: close_volume_only
+    base_ccy: USD
+
+analysis:
+  btc_symbol: BTC
+  windows_days:
+    7d: 7
+    1m: 30
+    3m: 90
+    6m: 180
+    1y: 365
+  rolling_windows_days: [7, 30, 90, 180, 365]
+  rolling_vol_days: 30
+  dca:
+    btc_symbol: BTC
+    monthly_amount_usd: 100.0
+    months: 12
+    buy_day_of_month: 1        # fall forward to next trading day if closed
+  lump_sum:
+    amount_usd: 1000.0
+
+quality:
+  freshness_max_lag_days: 2
+  stock_min_trading_days_per_year: 240
+  crypto_min_days_per_year: 360
+  close_lower_bound: 0.0
+  close_upper_bound: 1000000.0

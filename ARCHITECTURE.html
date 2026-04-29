@@ -1,0 +1,2513 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>From API to Analysis — traditional assets vs Bitcoin</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --amethyst:   #5E2548;
+    --amethyst-3: #9E3F84;
+    --bronze:     #D4B072;
+
+    --c-sources:  #5FA3D8;
+    --c-ingest:   #9F6AD1;
+    --c-bronze:   #D68A5C;
+    --c-silver:   #9A9590;
+    --c-gold:     #E6B84A;
+    --c-analysis: #5FB579;
+    --c-scheduler:#B08F4A;
+
+    --ink-0: #0A080E;
+    --ink-1: #11101A;
+    --ink-2: #18151F;
+    --ink-3: #211D2A;
+    --line:  #2A2632;
+    --line-2:#3A3544;
+
+    --text:   #F0EDE7;
+    --text-2: #C0BCB4;
+    --muted:  #7E7885;
+    --faded:  #4A4554;
+
+    --paper-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.55 0 0 0 0 0.45 0 0 0 0 0.55 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background:
+      radial-gradient(1500px 850px at 8% -8%, #1E1B27 0%, transparent 55%),
+      radial-gradient(1400px 750px at 92% 3%, #1A1724 0%, transparent 55%),
+      radial-gradient(1600px 900px at 60% 100%, #100E18 0%, transparent 60%),
+      radial-gradient(1400px 800px at 10% 90%, #15131E 0%, transparent 55%),
+      linear-gradient(178deg, #1B1824 0%, #13111C 50%, #0A090F 100%);
+    background-attachment: fixed;
+    color: var(--text);
+    font-family: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 15px;
+    line-height: 1.6;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background: var(--paper-grain);
+    pointer-events: none;
+    z-index: 0;
+    opacity: 0.5;
+    mix-blend-mode: overlay;
+  }
+  body::after {
+    content: '';
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(1400px 900px at 85% -10%, rgba(94,37,72,0.18), transparent 60%),
+      radial-gradient(1100px 700px at -10% 100%, rgba(168,133,84,0.08), transparent 55%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 48px 36px 80px;
+  }
+
+  /* ---------- Masthead ---------- */
+  .hero {
+    margin-bottom: 44px;
+    padding: 0 0 26px;
+    border-bottom: 1px solid var(--line);
+  }
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px; letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--amethyst-3);
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 18px;
+    font-weight: 500;
+  }
+  .eyebrow .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--amethyst);
+    box-shadow: 0 0 10px var(--amethyst-3);
+  }
+  .eyebrow .brk { color: var(--faded); }
+  h1 {
+    font-family: 'Manrope', sans-serif;
+    font-weight: 600;
+    font-size: 46px;
+    line-height: 1.04;
+    letter-spacing: -0.03em;
+    margin: 0 0 10px;
+    color: var(--text);
+  }
+  h1 em {
+    font-style: normal;
+    background: linear-gradient(180deg, #B84A9A 0%, #5E2548 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--bronze);
+    margin: 0 0 18px;
+    font-weight: 500;
+  }
+  .dek {
+    margin: 0;
+    font-size: 14.5px;
+    color: var(--text-2);
+    max-width: 640px;
+    line-height: 1.6;
+  }
+
+  /* ---------- Pipeline layout ---------- */
+  /* Sources sits OUTSIDE the scheduler envelope — external data isn't ours
+     to schedule. The envelope wraps the 5 stages we actually orchestrate. */
+  .pipeline {
+    position: relative;
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 24px;
+    align-items: stretch;
+    margin-bottom: 18px;
+  }
+  /* Sources column — three stacked elements with a shared left/right edge
+     so they read as a clean vertical line. The SOURCES label is absolutely
+     positioned above the stack so it doesn't shift the cluster's vertical
+     centre (which aligns with Ingest via flex centering). */
+  .flow-source {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 14px;
+    padding: 0;
+    position: relative;
+    z-index: 3;
+  }
+  .source-label {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    transform: translate(-50%, -130%);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--c-sources);
+    border: 1px solid rgba(95, 163, 216, 0.5);
+    background: rgba(95, 163, 216, 0.06);
+    padding: 3px 10px;
+    border-radius: 2px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  /* Force all three stack items to the exact same outer width + zero margin,
+     so the vertical line through their left & right edges is perfectly
+     straight regardless of user-agent button defaults. */
+  .flow-source > button {
+    margin: 0;
+    width: 100%;
+    align-self: stretch;
+    box-sizing: border-box;
+  }
+  .flow-source .stage {
+    min-height: 84px;
+    padding: 18px 16px 14px;
+  }
+  .flow-source .stage .title { font-size: 16px; margin-top: 10px; }
+
+  /* USD seed stretches to the full column width so its left/right edges
+     line up with the Massive and CoinGecko cards — dashed border signals
+     "internal/synthetic" while the alignment stays clean. */
+  .seed-node {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 8px 16px;
+    border: 1px dashed rgba(122, 163, 196, 0.85);
+    border-radius: 4px;
+    background: rgba(122, 163, 196, 0.05);
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    color: inherit;
+    transition: border-color 140ms, background 140ms, transform 140ms, box-shadow 140ms;
+  }
+  .seed-node:hover {
+    border-color: var(--slate);
+    background: rgba(122, 163, 196, 0.12);
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 1px rgba(122, 163, 196, 0.35);
+  }
+  .seed-node .seed-label {
+    font-size: 11px;
+    color: var(--slate);
+    letter-spacing: 0.14em;
+    font-weight: 500;
+  }
+  .seed-node .seed-tag {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+  }
+
+  /* ---------- Scheduler envelope ---------- */
+  .sched-frame {
+    position: relative;
+    border: 1px dashed rgba(176, 143, 74, 0.5);
+    border-radius: 14px;
+    background:
+      linear-gradient(180deg, rgba(176,143,74,0.035) 0%, rgba(176,143,74,0.02) 100%),
+      var(--paper-grain);
+    background-color: transparent;
+    padding: 0;
+    overflow: visible;
+    /* Quick warm-up, slow cool-down — scheduler fires fast, fades gently. */
+    transition: border-color 260ms ease, box-shadow 260ms ease;
+  }
+  /* Sustained "active" state — stays lit while the packet is in flight.
+     Border goes solid-bright, an amber halo ring forms around the frame,
+     and the SCHEDULER chip picks up a matching glow. */
+  .sched-frame.active {
+    border-color: rgba(176, 143, 74, 1);
+    box-shadow:
+      0 0 0 1px rgba(176, 143, 74, 0.25),
+      0 0 36px 2px rgba(176, 143, 74, 0.32);
+  }
+  .sched-frame .sched-chip { transition: box-shadow 260ms ease; }
+  .sched-frame.active .sched-chip {
+    box-shadow: 0 0 0 4px rgba(176, 143, 74, 0.25);
+  }
+  /* Slower fade when .active is removed so the "dim down" reads as a
+     decay rather than an instant switch-off. */
+  .sched-frame:not(.active) { transition: border-color 600ms ease, box-shadow 600ms ease; }
+  .sched-frame:not(.active) .sched-chip { transition: box-shadow 600ms ease; }
+  .sched-band {
+    background: rgba(176,143,74,0.06);
+    border: none;
+    width: 100%;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 16px;
+    align-items: center;
+    padding: 12px 22px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-2);
+    letter-spacing: 0.08em;
+    text-align: left;
+    cursor: pointer;
+    transition: background 160ms ease;
+  }
+  .sched-band:hover { background: rgba(176,143,74,0.12); }
+  .sched-band-top    { border-bottom: 1px dashed rgba(176,143,74,0.3); }
+  .sched-band-bottom { border-top:    1px dashed rgba(176,143,74,0.3); }
+  .sched-chip {
+    font-weight: 600;
+    letter-spacing: 0.22em;
+    font-size: 9.5px;
+    color: var(--ink-0);
+    background: var(--c-scheduler);
+    padding: 3px 9px;
+    border-radius: 2px;
+    text-transform: uppercase;
+  }
+  .sched-chip.ghost {
+    background: transparent;
+    color: var(--c-scheduler);
+    border: 1px solid rgba(176,143,74,0.5);
+  }
+  .sched-band .cadence { color: var(--text-2); font-size: 11px; letter-spacing: 0.06em; }
+  .sched-band .cadence code {
+    background: var(--ink-1);
+    border: 1px solid var(--line-2);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--c-scheduler);
+    font-size: 10.5px;
+  }
+  .sched-band .action {
+    color: var(--muted);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .sched-band .action::after {
+    content: '→';
+    color: var(--c-scheduler);
+    transition: transform 160ms ease;
+  }
+  .sched-band:hover .action::after { transform: translateX(3px); }
+
+  /* ---------- Flow canvas (inside the envelope, 5 stages) ---------- */
+  .flow-canvas {
+    position: relative;
+    padding: 36px 24px 40px;
+  }
+  .flow {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 48px;
+    z-index: 2;
+  }
+  .stage {
+    position: relative;
+    background: var(--paper-grain), var(--ink-1);
+    border: 1px solid var(--accent);
+    border-radius: 10px;
+    padding: 22px 16px 16px;
+    cursor: pointer;
+    text-align: left;
+    font-family: 'JetBrains Mono', monospace;
+    color: inherit;
+    transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
+    min-height: 110px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .stage::before {
+    content: '';
+    position: absolute;
+    top: 11px; left: 11px;
+    width: 7px; height: 7px;
+    border-radius: 1px;
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+  .stage:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      0 0 0 1px var(--accent),
+      0 14px 30px -8px color-mix(in oklab, var(--accent) 35%, transparent);
+  }
+  .stage .title {
+    font-weight: 500;
+    font-size: 17px;
+    color: var(--text);
+    letter-spacing: -0.005em;
+    margin-top: 12px;
+  }
+  .stage .tag {
+    font-weight: 400;
+    font-size: 11.5px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+  }
+  /* Hide contents during zoom so the panel isn't double-rendered. */
+  .stage.zooming > * { opacity: 0; transition: opacity 160ms; }
+
+  .stage[data-stage="massive"]   { --accent: var(--c-sources); }
+  .stage[data-stage="coingecko"] { --accent: var(--c-sources); }
+  .stage[data-stage="ingest"]    { --accent: var(--c-ingest); }
+  .stage[data-stage="bronze"]    { --accent: var(--c-bronze); }
+  .stage[data-stage="silver"]    { --accent: var(--c-silver); }
+  .stage[data-stage="gold"]      { --accent: var(--c-gold); }
+  .stage[data-stage="analysis"]  { --accent: var(--c-analysis); }
+
+  /* Wires overlay spans the WHOLE pipeline (Sources + envelope) so the
+     Sources → Ingest wire crosses the envelope boundary visually. */
+  .wires {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .wires svg { width: 100%; height: 100%; display: block; }
+  .wires path {
+    fill: none;
+    stroke: var(--line-2);
+    stroke-width: 1;
+    stroke-dasharray: 3 5;
+  }
+  .packet {
+    position: absolute;
+    top: 0; left: 0;
+    width: 10px; height: 10px;
+    border-radius: 2px;
+    background: var(--c-sources);
+    box-shadow: 0 0 12px currentColor;
+    color: var(--c-sources);
+    opacity: 0;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 3;
+    transition: opacity 140ms ease;
+  }
+  /* Fan-in source packets — slightly smaller so three of them in flight
+     don't visually crowd the ingest node. */
+  .source-packet {
+    width: 7px;
+    height: 7px;
+    box-shadow: 0 0 10px currentColor;
+  }
+
+
+  .hint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    color: var(--muted);
+    text-transform: uppercase;
+    text-align: center;
+    margin: 28px 0 0;
+  }
+  .hint .kbd {
+    background: var(--ink-2);
+    border: 1px solid var(--line-2);
+    border-radius: 3px;
+    padding: 2px 6px;
+    color: var(--bronze);
+    margin: 0 2px;
+  }
+
+  /* ---------- FLIP zoom layer ---------- */
+  /* Flex centering: panel hugs its content (height auto) and sits in the
+     middle of the viewport. The FLIP transform starts it scaled down at the
+     source node's rect and grows to identity transform (centered). */
+  .zoom-layer {
+    position: fixed; inset: 0;
+    z-index: 100;
+    pointer-events: none;
+    visibility: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5vh 5vw;
+  }
+  .zoom-layer.open { pointer-events: auto; visibility: visible; }
+  .zoom-layer.under { z-index: 99; }   /* node layer drops when comp layer opens */
+
+  /* Backdrop fades in as the panel grows so it doesn't feel like a popup. */
+  .zoom-backdrop {
+    position: absolute; inset: 0;
+    background: rgba(8,6,12,0.78);
+    backdrop-filter: blur(8px);
+    opacity: 0;
+    transition: opacity 340ms ease 60ms;
+    cursor: pointer;
+  }
+  .zoom-layer.open .zoom-backdrop { opacity: 1; }
+
+  /* Panel is content-sized (height auto, capped at 85vh). Flex-centered by
+     its layer. Animation is a transform-based FLIP. */
+  .zoom-panel {
+    position: relative;
+    width: 100%;
+    max-width: 1200px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--paper-grain), var(--ink-1);
+    border: 1px solid var(--accent, var(--line-2));
+    border-radius: 12px;
+    box-shadow: 0 40px 100px -20px rgba(0,0,0,0.75);
+    overflow: hidden;
+    /* Start state: scaled down + translated to source-rect centre. */
+    transform: translate(var(--ox, 0px), var(--oy, 0px)) scale(var(--s, 0.1));
+    transform-origin: center center;
+    opacity: 0;
+  }
+  .zoom-panel.animating {
+    transition:
+      transform 420ms var(--ease),
+      opacity   220ms ease;
+  }
+  .zoom-layer.open .zoom-panel {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+
+  /* Panel content chrome — close on the LEFT so primary actions live near
+     the viewer's natural escape path. */
+  .panel-head {
+    padding: 22px 28px 18px;
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+  .panel-head .sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px; letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .panel-head .title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 24px; font-weight: 600;
+    color: var(--text); margin: 0;
+    letter-spacing: -0.015em;
+  }
+  .panel-head .meta-path {
+    margin-top: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .panel-head .meta-path .sep { color: var(--faded); margin: 0 8px; }
+  .panel-head .close {
+    background: transparent;
+    border: 1px solid var(--line-2);
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    padding: 7px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: border-color 150ms, color 150ms;
+    white-space: nowrap;
+  }
+  .panel-head .close:hover { border-color: var(--accent); color: var(--accent); }
+
+  .panel-body {
+    padding: 22px 28px 28px;
+    overflow: auto;
+    flex: 1 1 auto;
+    min-height: 0;   /* let flex child shrink so overflow scrolling works */
+  }
+
+  /* Stage view: component grid */
+  .components-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 14px;
+    align-content: start;
+  }
+  .comp-card {
+    background: var(--ink-2);
+    border: 1px solid var(--line-2);
+    border-radius: 8px;
+    padding: 22px 24px 24px;
+    cursor: pointer;
+    text-align: left;
+    font-family: inherit;
+    color: inherit;
+    position: relative;
+    transition: border-color 140ms, background 140ms, transform 140ms;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 148px;
+  }
+  .comp-card:hover {
+    border-color: var(--accent);
+    background: var(--ink-3);
+    transform: translateY(-2px);
+  }
+  .comp-card .c-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .comp-card .c-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13.5px;
+    color: var(--accent);
+    letter-spacing: 0.02em;
+    font-weight: 500;
+  }
+  .comp-card .c-role {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.2em;
+    color: var(--muted);
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .comp-card .c-cap {
+    font-family: 'Manrope', sans-serif;
+    font-size: 13.5px;
+    color: var(--text-2);
+    line-height: 1.55;
+    margin: 0;
+    flex: 1;
+  }
+  .comp-card::after {
+    content: '→';
+    position: absolute;
+    bottom: 14px; right: 18px;
+    color: var(--muted);
+    font-size: 15px;
+    transition: color 140ms, transform 140ms;
+    line-height: 1;
+  }
+  .comp-card:hover::after {
+    color: var(--accent);
+    transform: translateX(4px);
+  }
+
+  /* Component view: tabs + overview */
+  .tabs {
+    display: flex; gap: 2px;
+    border-bottom: 1px solid var(--line);
+    margin: -4px 0 22px;
+  }
+  .tab {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    padding: 10px 16px;
+    cursor: pointer;
+    transition: color 140ms, border-color 140ms;
+    margin-bottom: -1px;
+  }
+  .tab:hover { color: var(--text-2); }
+  .tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; animation: tabFade 200ms ease; }
+  @keyframes tabFade {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .summary {
+    font-family: 'Manrope', sans-serif;
+    font-size: 16px;
+    color: var(--text);
+    line-height: 1.65;
+    margin: 0 0 26px;
+    max-width: 920px;
+    font-weight: 400;
+  }
+  .summary strong { color: var(--text); font-weight: 600; }
+  .summary code {
+    background: var(--ink-2);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--bronze);
+  }
+
+  .highlights {
+    display: grid;
+    gap: 10px;
+    max-width: 960px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    counter-reset: hi;
+  }
+  /* Flex (not grid) so inline text flows normally — grid would promote every
+     nested element to its own grid item and wrap the text column-narrow. */
+  .highlights li {
+    display: flex;
+    align-items: baseline;
+    gap: 16px;
+    padding: 14px 18px;
+    background: var(--ink-2);
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--accent);
+    border-radius: 5px;
+    font-family: 'Manrope', sans-serif;
+    font-size: 13.5px;
+    line-height: 1.65;
+    color: var(--text-2);
+  }
+  .highlights li::before {
+    content: counter(hi, decimal-leading-zero);
+    counter-increment: hi;
+    flex: 0 0 auto;
+    min-width: 22px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    font-weight: 600;
+    padding-top: 2px;
+  }
+  .highlights li > * { flex: 1; min-width: 0; }
+  .highlights li strong { color: var(--text); font-weight: 600; }
+  .highlights li code {
+    background: var(--ink-1);
+    border: 1px solid var(--line-2);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--bronze);
+    white-space: nowrap;
+  }
+
+  pre {
+    margin: 0;
+    padding: 18px 20px;
+    background: #040406;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--text-2);
+    overflow: auto;
+    white-space: pre;
+    max-height: 60vh;
+  }
+  pre .kw { color: #B46F9A; }
+  pre .fn { color: #D4B072; }
+  pre .str { color: #9BC77E; }
+  pre .num { color: #E6B84A; }
+  pre .com { color: #5A5360; font-style: italic; }
+  pre .cls { color: #E07DB2; }
+  pre .key { color: #7AA3C4; }   /* JSON keys */
+  pre .bool { color: #B46F9A; }  /* JSON true/false/null */
+
+  /* Example-response tab caption — the endpoint URL above the JSON dump. */
+  .response-caption {
+    margin: 0 0 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    line-height: 1.55;
+    color: var(--text-2);
+    padding: 10px 14px;
+    background: var(--ink-2);
+    border: 1px solid var(--line);
+    border-left: 2px solid var(--accent, var(--line-2));
+    border-radius: 4px;
+    max-width: 960px;
+    word-break: break-all;
+  }
+  .response-caption code {
+    background: var(--ink-1);
+    border: 1px solid var(--line-2);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--bronze);
+  }
+  .response-caption .method {
+    color: var(--accent, var(--text));
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    margin-right: 8px;
+  }
+
+  /* ---------- Scheduler popover ---------- */
+  /* FLIPs from the clicked band — same pattern as the node/comp zoom.
+     JS sets --ox/--oy to the band's center-relative offset and we start
+     scaled down at that point, then animate to identity. */
+  .popover-shell {
+    position: fixed; inset: 0;
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 110px 20px 20px;
+    z-index: 80;
+    pointer-events: none;
+    visibility: hidden;
+  }
+  .popover-shell.open { pointer-events: auto; visibility: visible; }
+  .popover-shell::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: rgba(8,6,12,0.6);
+    backdrop-filter: blur(4px);
+    opacity: 0;
+    transition: opacity 300ms ease 60ms;
+  }
+  .popover-shell.open::before { opacity: 1; }
+
+  .popover {
+    position: relative;
+    background: var(--paper-grain), var(--ink-1);
+    border: 1px solid var(--c-scheduler);
+    border-top: 2px solid var(--c-scheduler);
+    border-radius: 8px;
+    max-width: 680px;
+    width: 100%;
+    padding: 26px 30px 24px;
+    box-shadow: 0 30px 60px -20px rgba(0,0,0,0.7);
+    /* Default rest-state (no open class): tiny at band origin. */
+    transform: translate(var(--ox, 0px), var(--oy, 0px)) scale(0.25);
+    opacity: 0;
+  }
+  .popover.animating {
+    transition:
+      transform 380ms var(--ease),
+      opacity   220ms ease 80ms;
+  }
+  .popover-shell.open .popover {
+    transform: translate(0, 0) scale(1);
+    opacity: 1;
+  }
+  .popover .p-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 18px;
+    padding-bottom: 14px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .popover .p-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--c-scheduler);
+    margin-bottom: 4px;
+  }
+  .popover .p-title {
+    font-family: 'Manrope', sans-serif;
+    font-size: 20px; font-weight: 600;
+    color: var(--text); margin: 0;
+    letter-spacing: -0.015em;
+  }
+  .popover .close {
+    background: transparent;
+    border: 1px solid var(--line-2);
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    padding: 6px 12px;
+    border-radius: 3px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: border-color 150ms, color 150ms;
+  }
+  .popover .close:hover { border-color: var(--c-scheduler); color: var(--c-scheduler); }
+  .popover p {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--text-2);
+    line-height: 1.6;
+  }
+  .popover p:last-of-type { margin-bottom: 16px; }
+  .popover strong { color: var(--text); font-weight: 600; }
+  .popover code {
+    background: var(--ink-2);
+    border: 1px solid var(--line);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--bronze);
+  }
+  .cadence-table {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 12px 14px;
+    padding: 16px 18px;
+    background: var(--ink-2);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+  }
+  .cadence-table .k {
+    color: var(--muted);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-size: 9.5px;
+    align-self: center;
+  }
+  .cadence-table .v { color: var(--text); }
+  .cadence-table .v code {
+    background: var(--ink-1);
+    border-color: var(--line-2);
+    color: var(--c-scheduler);
+  }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 22px;
+    border-top: 1px solid var(--line);
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* ---------- Tablet (< 960px) ---------- */
+  @media (max-width: 960px) {
+    .wrap { padding: 40px 24px 60px; }
+    h1 { font-size: 36px; }
+    .pipeline { grid-template-columns: 1fr; gap: 20px; }
+
+    /* Sources stacked above the envelope, label sits in-flow (not absolute)
+       so it doesn't hang outside the pipeline container on small screens. */
+    .flow-source {
+      padding: 12px 0 0;
+      gap: 12px;
+    }
+    .source-label {
+      position: static;
+      transform: none;
+      align-self: center;
+      margin-bottom: 4px;
+    }
+
+    .flow { grid-template-columns: repeat(5, 1fr); gap: 14px; }
+    /* Hide the wire SVG + all packets (fan-in + main) — wires can't cross
+       grid rows cleanly, and packet co-ordinates collapse in a single-column
+       layout. */
+    .wires, .packet, .source-packet { display: none; }
+    .sched-band {
+      grid-template-columns: auto 1fr;
+      padding: 10px 16px;
+      font-size: 10.5px;
+    }
+    .sched-band .action { display: none; }
+    .sched-band .cadence code { font-size: 10px; }
+    .components-grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+  }
+
+  /* ---------- Mobile phone (< 680px) ---------- */
+  @media (max-width: 680px) {
+    .wrap { padding: 28px 16px 56px; }
+    .hero { margin-bottom: 32px; padding-bottom: 20px; }
+    h1 { font-size: 28px; line-height: 1.1; }
+    .subtitle { font-size: 10.5px; letter-spacing: 0.18em; }
+    .dek { font-size: 13px; }
+
+    /* Sources column compresses further on phone — bigger cards would
+       otherwise dominate the viewport. */
+    .flow-source { gap: 8px; padding-top: 6px; }
+    .flow-source .stage { min-height: 70px; padding: 14px 14px 12px; }
+    .flow-source .stage .title { font-size: 15px; margin-top: 6px; }
+    .flow-source .stage .tag { font-size: 10.5px; }
+    .seed-node { padding: 7px 12px; }
+    .seed-node .seed-label { font-size: 10.5px; }
+    .seed-node .seed-tag { font-size: 8.5px; }
+
+    /* 2-column stage grid inside the envelope */
+    .flow { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .flow-canvas { padding: 20px 16px 22px; }
+    .stage { min-height: 82px; padding: 18px 14px 12px; }
+    .stage::before { top: 9px; left: 9px; width: 6px; height: 6px; }
+    .stage .title { font-size: 15px; margin-top: 8px; }
+    .stage .tag { font-size: 10.5px; }
+
+    .sched-band {
+      padding: 10px 14px;
+      font-size: 10px;
+      gap: 10px;
+    }
+    .sched-chip { font-size: 9px; padding: 3px 7px; }
+    .sched-band .cadence { font-size: 9.5px; }
+
+    .hint { font-size: 9px; letter-spacing: 0.16em; }
+
+    /* Zoom panels take nearly the full viewport on mobile */
+    .zoom-layer { padding: 2vh 2vw; }
+    .zoom-panel { max-height: 96vh; border-radius: 10px; }
+    .panel-head {
+      padding: 16px 18px 14px;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+    }
+    .panel-head .title { font-size: 18px; }
+    .panel-head .sub { font-size: 9.5px; letter-spacing: 0.18em; }
+    .panel-head .meta-path { font-size: 10px; }
+    .panel-head .close { padding: 5px 9px; font-size: 9.5px; }
+    .panel-body { padding: 18px 18px 22px; }
+
+    /* Cards stack on mobile */
+    .components-grid { grid-template-columns: 1fr; gap: 10px; }
+    .comp-card { min-height: 0; padding: 16px 18px; gap: 8px; }
+    .comp-card .c-name { font-size: 13px; }
+    .comp-card .c-role { font-size: 9px; }
+    .comp-card .c-cap { font-size: 13px; }
+    .comp-card::after { bottom: 12px; right: 14px; }
+
+    /* Tighter highlight cards + readable code */
+    .summary { font-size: 14.5px; }
+    .highlights li {
+      padding: 12px 14px;
+      font-size: 12.5px;
+      gap: 12px;
+    }
+    .highlights li::before { font-size: 10px; min-width: 18px; }
+    .highlights li code { font-size: 11px; white-space: normal; word-break: break-word; }
+
+    .tabs { margin: 0 0 18px; overflow-x: auto; }
+    .tab { font-size: 10.5px; padding: 9px 12px; }
+
+    pre {
+      font-size: 10.5px;
+      padding: 12px 14px;
+      line-height: 1.55;
+      max-height: 50vh;
+    }
+
+    /* Popover takes nearly the full screen too */
+    .popover-shell { padding: 16px; align-items: center; }
+    .popover { padding: 20px 22px 20px; border-radius: 8px; }
+    .popover .p-title { font-size: 16px; }
+    .popover p { font-size: 13px; }
+    .popover .p-head { padding-bottom: 12px; margin-bottom: 12px; }
+    .cadence-table {
+      grid-template-columns: 86px 1fr;
+      gap: 10px 12px;
+      padding: 12px 14px;
+      font-size: 11px;
+    }
+    .cadence-table .k { font-size: 9px; }
+
+    footer {
+      grid-template-columns: 1fr;
+      font-size: 10px;
+      text-align: left;
+    }
+  }
+
+  /* Very narrow (< 420px) — single-column stages */
+  @media (max-width: 420px) {
+    .flow { grid-template-columns: 1fr; }
+    .stage { min-height: 70px; }
+    .wrap { padding: 24px 12px 48px; }
+    .sched-band .cadence { display: none; }   /* keep band chip + chevron only */
+    .sched-band .action { display: inline-flex; font-size: 9px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="eyebrow">
+      <span class="dot"></span>
+      <span>Volume 01</span>
+      <span class="brk">/</span>
+      <span>Architecture</span>
+    </div>
+    <h1>From <em>API</em> to <em>Analysis</em>.</h1>
+    <p class="subtitle">Traditional Assets versus Bitcoin</p>
+    <p class="dek">Click a stage to zoom in. Click a component for its overview and code.</p>
+  </div>
+
+  <!-- Pipeline: Sources (external) · Scheduler envelope [Ingest → Analysis] -->
+  <div class="pipeline" id="pipeline">
+    <div class="wires" id="wires"></div>
+
+    <!-- Sources cluster — OUTSIDE the scheduler envelope. Two big API nodes
+         bracket a small USD "seed" block in the middle to mark the
+         stablecoin anchor we synthesise locally. Each is a terminal —
+         clicking skips straight to the component detail. -->
+    <div class="flow-source">
+      <div class="source-label">Sources</div>
+      <button class="stage" data-stage="massive" data-terminal="true">
+        <div class="title">Massive</div>
+        <div class="tag">REST · JSON</div>
+      </button>
+      <button class="seed-node" data-stage="usd_seed" data-terminal="true" aria-label="USD seed">
+        <span class="seed-label">USD</span>
+        <span class="seed-tag">seed · 1.0</span>
+      </button>
+      <button class="stage" data-stage="coingecko" data-terminal="true">
+        <div class="title">CoinGecko</div>
+        <div class="tag">REST · JSON</div>
+      </button>
+    </div>
+
+    <!-- Scheduler envelope wraps the 5 orchestrated stages. -->
+    <div class="sched-frame">
+      <button class="sched-band sched-band-top" id="sched-top">
+        <span class="sched-chip">Scheduler</span>
+        <span class="cadence"><code>cron · 0 2 * * *</code> UTC daily · <code>make run</code> pipeline</span>
+        <span class="action">Open details</span>
+      </button>
+
+      <div class="flow-canvas" id="flow-canvas">
+        <div class="flow" id="flow">
+          <button class="stage" data-stage="ingest">
+            <div class="title">Ingest</div>
+            <div class="tag">async · retry</div>
+          </button>
+          <button class="stage" data-stage="bronze">
+            <div class="title">Bronze</div>
+            <div class="tag">Parquet</div>
+          </button>
+          <button class="stage" data-stage="silver">
+            <div class="title">Silver</div>
+            <div class="tag">DuckDB MERGE</div>
+          </button>
+          <button class="stage" data-stage="gold">
+            <div class="title">Gold</div>
+            <div class="tag">dbt · star</div>
+          </button>
+          <button class="stage" data-stage="analysis">
+            <div class="title">Analysis</div>
+            <div class="tag">Polars · Plotly</div>
+          </button>
+        </div>
+      </div>
+
+      <button class="sched-band sched-band-bottom" id="sched-bot">
+        <span class="sched-chip ghost">Recovery</span>
+        <span class="cadence">HTTP retries · crash detection · data-quality checks · <code>make doctor</code></span>
+        <span class="action">Open details</span>
+      </button>
+    </div>
+
+    <div class="packet" id="packet"></div>
+  </div>
+
+  <div class="hint">
+    <span class="kbd">Click</span> a stage ·
+    <span class="kbd">Esc</span> to zoom out
+  </div>
+
+  <footer>
+    <div>data-platform-poc · architecture</div>
+    <div>src/pipeline · dbt · duckdb</div>
+  </footer>
+
+</div>
+
+<!-- Scheduler popover — WHEN and HOW the pipeline runs. -->
+<div class="popover-shell" id="sched-shell">
+  <div class="popover" role="dialog" aria-modal="true">
+    <div class="p-head">
+      <div>
+        <div class="p-sub">Scheduler</div>
+        <h3 class="p-title">Daily cron · when and how this runs</h3>
+      </div>
+      <button class="close" data-popover-close="sched">Close ×</button>
+    </div>
+    <p><strong>Daily cron at 02:00 UTC</strong>. One <code>make run</code> per day, labeled <code>incremental_run</code> in <code>performance.jsonl</code>. Default schedule installs via <code>make schedule</code>.</p>
+    <div class="cadence-table">
+      <div class="k">Trigger</div>   <div class="v"><code>cron</code> · <code>0 2 * * *</code> UTC</div>
+      <div class="k">First time</div><div class="v"><code>make init</code> — one-time setup (DDL + dim_date seed + first run)</div>
+      <div class="k">Daily</div>     <div class="v"><code>make run</code> — ingest → transform → analyze</div>
+      <div class="k">Backfill</div>  <div class="v"><code>make backfill START=… END=…</code> for historical windows</div>
+      <div class="k">Reset</div>     <div class="v"><code>make clean &amp;&amp; make init</code> — nuke the warehouse + fresh start</div>
+    </div>
+  </div>
+</div>
+
+<!-- Recovery popover — WHAT HAPPENS when things go wrong. -->
+<div class="popover-shell" id="rec-shell">
+  <div class="popover" role="dialog" aria-modal="true">
+    <div class="p-head">
+      <div>
+        <div class="p-sub">Recovery</div>
+        <h3 class="p-title">Failure modes &amp; how they're contained</h3>
+      </div>
+      <button class="close" data-popover-close="rec">Close ×</button>
+    </div>
+    <p>Four failure modes, each with its own recovery path — plus self-healing for a missed cron. Nothing fails silently.</p>
+    <div class="cadence-table">
+      <div class="k">HTTP</div>    <div class="v">Retries on rate-limit (429), server error (5xx), and timeouts — up to 3 attempts per call, waits 1 s → 30 s between tries, honours <code>Retry-After</code> from the server.</div>
+      <div class="k">Crashes</div> <div class="v">orphan <code>running</code> heartbeat in <code>meta.pipeline_runs</code>, surfaced by <code>make doctor</code></div>
+      <div class="k">Data</div>    <div class="v">4 silver DQ assertions — unique PK, not-null, bounds, freshness — fail the run on <code>severity='error'</code></div>
+      <div class="k">Atomic TX</div><div class="v">bronze tmp→rename · silver <code>BEGIN/COMMIT</code> with rollback · dbt tests post-build</div>
+      <div class="k">Missed run</div><div class="v">next <code>make run</code> starts at <code>max(silver.date) + 1</code> and self-heals</div>
+    </div>
+  </div>
+</div>
+
+<!-- Stage zoom layer -->
+<div class="zoom-layer" id="zoom-node">
+  <div class="zoom-backdrop" data-close="node"></div>
+  <div class="zoom-panel" id="zoom-node-panel">
+    <div class="panel-head">
+      <button class="close" data-close="node">× Close</button>
+      <div>
+        <div class="sub" id="zoom-node-sub"></div>
+        <h3 class="title" id="zoom-node-title"></h3>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="components-grid" id="zoom-node-components"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Component zoom layer -->
+<div class="zoom-layer" id="zoom-comp">
+  <div class="zoom-backdrop" data-close="comp"></div>
+  <div class="zoom-panel" id="zoom-comp-panel">
+    <div class="panel-head">
+      <button class="close" data-close="comp">← Back</button>
+      <div>
+        <div class="sub" id="zoom-comp-sub"></div>
+        <h3 class="title" id="zoom-comp-title"></h3>
+        <div class="meta-path">
+          <span id="zoom-comp-path"></span>
+          <span class="sep">·</span>
+          <span id="zoom-comp-role"></span>
+        </div>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="overview">Overview</button>
+        <button class="tab" data-tab="code">Code</button>
+        <button class="tab" data-tab="response" id="tab-response" hidden>Example response</button>
+      </div>
+      <div class="tab-panel active" data-panel="overview">
+        <p class="summary" id="zoom-comp-summary"></p>
+        <ul class="highlights" id="zoom-comp-highlights"></ul>
+      </div>
+      <div class="tab-panel" data-panel="code">
+        <pre><code id="zoom-comp-code"></code></pre>
+      </div>
+      <div class="tab-panel" data-panel="response">
+        <p class="response-caption" id="zoom-comp-response-caption"></p>
+        <pre><code id="zoom-comp-response"></code></pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- Stage content ----------
+const STAGE_COLORS = {
+  massive:   "#5FA3D8",
+  coingecko: "#5FA3D8",
+  usd_seed:  "#7AA3C4",
+  ingest:    "#9F6AD1",
+  bronze:    "#D68A5C",
+  silver:    "#9A9590",
+  gold:      "#E6B84A",
+  analysis:  "#5FB579",
+};
+// Packet path: sources cluster (computed from .flow-source rect) →
+// ingest → bronze → silver → gold → analysis.
+const STAGE_ORDER = ["ingest", "bronze", "silver", "gold", "analysis"];
+// Terminal stages skip the node-zoom layer; clicking them goes straight to
+// the component-zoom detail view since each IS a single component.
+const TERMINAL_STAGES = new Set(["massive", "coingecko", "usd_seed"]);
+
+const STAGES = {
+  // --------- Terminal source nodes (each is a single component) ---------
+  massive: {
+    terminal: true,
+    sub: "SOURCE · stocks / FX / index",
+    name: "Massive API",
+    role: "provider",
+    path: "src/pipeline/ingest/massive.py",
+    summary: "Daily-aggregates endpoint for AAPL, GOOGL, MSFT, SPY and the <code>C:</code>-prefixed FX pairs (EURUSD, GBPUSD). Bearer-token auth, 5 req/min free-tier ceiling, paginated via <code>next_url</code>.",
+    highlights: [
+      "<strong>Endpoint</strong> — <code>/v2/aggs/ticker/{symbol}/range/1/day/{from}/{to}</code> with <code>adjusted=true</code>, <code>sort=asc</code>, <code>limit=50000</code>. Authorization header: <code>Bearer &lt;API_KEY&gt;</code>.",
+      "<strong>Pagination</strong> — loops while <code>response.next_url</code> is present. We re-parse the next_url's query params and pass them to <code>client.get_json</code> so the full window fills correctly past the 50 k-row page cap.",
+      "<strong>Schema-validated</strong> — <code>MassiveAggResponse.model_validate(payload)</code> enforces field names and types at the HTTP boundary. Each bar becomes a <code>BronzeRow</code> with OHLCV + VWAP + trade_count.",
+      "<strong>Empty results</strong> (weekends / holidays) are success, not failure — the API returns <code>results: []</code> and we move on to the next symbol.",
+    ],
+    code: `<span class="kw">async def</span> <span class="fn">fetch_symbol</span>(client, asset, *, start, end, api_key, run_id, ingested_at=<span class="kw">None</span>):
+    url = <span class="str">f"/v2/aggs/ticker/{asset.symbol}/range/1/day/{start.isoformat()}/{end.isoformat()}"</span>
+    params = {<span class="str">"adjusted"</span>: <span class="str">"true"</span>, <span class="str">"sort"</span>: <span class="str">"asc"</span>, <span class="str">"limit"</span>: <span class="num">50000</span>}
+    headers = {<span class="str">"Authorization"</span>: <span class="str">f"Bearer {api_key}"</span>}
+
+    rows, next_url = [], <span class="kw">None</span>
+    <span class="kw">while True</span>:
+        <span class="kw">if</span> next_url <span class="kw">is None</span>:
+            payload = <span class="kw">await</span> client.get_json(url, params=params, headers=headers)
+        <span class="kw">else</span>:
+            parsed = urlparse(next_url)
+            next_params = {k: v[<span class="num">0</span>] <span class="kw">for</span> k, v <span class="kw">in</span> parse_qs(parsed.query).items()}
+            payload = <span class="kw">await</span> client.get_json(parsed.path, params=next_params, headers=headers)
+
+        response = MassiveAggResponse.model_validate(payload)
+        <span class="kw">for</span> bar <span class="kw">in</span> response.results:
+            rows.append(BronzeRow(source=<span class="str">"massive"</span>, asset_type=asset.asset_type,
+                                  symbol=asset.symbol, date=bar.trade_date,
+                                  open=bar.o, high=bar.h, low=bar.low, close=bar.c,
+                                  volume=bar.v, vwap=bar.vw, trade_count=bar.n,
+                                  ingested_at=ingested_at, run_id=run_id))
+        next_url = response.next_url
+        <span class="kw">if not</span> next_url: <span class="kw">break</span>
+    <span class="kw">return</span> rows`,
+    responseCaption: `<span class="method">GET</span> <code>https://api.massive.com/v2/aggs/ticker/AAPL/range/1/day/2024-01-04/2024-01-05?adjusted=true&amp;sort=asc&amp;limit=50000</code>`,
+    response: `{
+  <span class="key">"ticker"</span>: <span class="str">"AAPL"</span>,
+  <span class="key">"queryCount"</span>: <span class="num">2</span>,
+  <span class="key">"resultsCount"</span>: <span class="num">2</span>,
+  <span class="key">"adjusted"</span>: <span class="bool">true</span>,
+  <span class="key">"results"</span>: [
+    {
+      <span class="key">"v"</span>: <span class="num">54023943</span>,
+      <span class="key">"vw"</span>: <span class="num">172.5812</span>,
+      <span class="key">"o"</span>: <span class="num">171.22</span>,
+      <span class="key">"c"</span>: <span class="num">172.62</span>,
+      <span class="key">"h"</span>: <span class="num">173.31</span>,
+      <span class="key">"l"</span>: <span class="num">170.89</span>,
+      <span class="key">"t"</span>: <span class="num">1704326400000</span>,
+      <span class="key">"n"</span>: <span class="num">512834</span>
+    },
+    {
+      <span class="key">"v"</span>: <span class="num">47104200</span>,
+      <span class="key">"vw"</span>: <span class="num">171.9433</span>,
+      <span class="key">"o"</span>: <span class="num">172.51</span>,
+      <span class="key">"c"</span>: <span class="num">171.08</span>,
+      <span class="key">"h"</span>: <span class="num">173.00</span>,
+      <span class="key">"l"</span>: <span class="num">169.76</span>,
+      <span class="key">"t"</span>: <span class="num">1704412800000</span>,
+      <span class="key">"n"</span>: <span class="num">478012</span>
+    }
+  ],
+  <span class="key">"status"</span>: <span class="str">"OK"</span>,
+  <span class="key">"request_id"</span>: <span class="str">"b17cc2ae5e3f5e7a0fd8a83c7e8f..."</span>,
+  <span class="key">"count"</span>: <span class="num">2</span>,
+  <span class="key">"next_url"</span>: <span class="str">"https://api.massive.com/v2/aggs/ticker/AAPL/range/1/day/2024-01-04/2024-01-05?cursor=..."</span>
+}
+
+<span class="com">// Field mapping:</span>
+<span class="com">//   t  = timestamp (ms since epoch) → BronzeRow.date</span>
+<span class="com">//   o  = open                       c  = close</span>
+<span class="com">//   h  = high                       l  = low</span>
+<span class="com">//   v  = volume                     vw = volume-weighted avg price</span>
+<span class="com">//   n  = number of trades in the bar</span>`,
+  },
+
+  coingecko: {
+    terminal: true,
+    sub: "SOURCE · crypto",
+    name: "CoinGecko API",
+    role: "provider",
+    path: "src/pipeline/ingest/coingecko.py",
+    summary: "Bitcoin daily close + volume via the <code>/market_chart/range</code> endpoint. One request returns the full window as parallel <code>prices</code> and <code>total_volumes</code> arrays keyed by millisecond timestamps. 10 req/min free tier, concurrency 2.",
+    highlights: [
+      "<strong>Endpoint</strong> — <code>/coins/bitcoin/market_chart/range</code> with <code>vs_currency=usd</code>, <code>from/to</code> as Unix seconds. End of window is bumped to 23:59:59 UTC so the final daily bucket lands inside the range.",
+      "<strong>Close-only</strong> — this endpoint doesn't return OHL, so <code>dim_asset.price_completeness = 'close_volume_only'</code> for BTC. The gold star-schema stays uniform; consumers that need OHL know to skip.",
+      "<strong>Defensive zip</strong> — we build a <code>by_ts</code> dict keyed by timestamp rather than zipping positionally, in case CoinGecko ever returns mis-aligned arrays.",
+      "<strong>Schema-validated</strong> — <code>CoinGeckoMarketChart.model_validate(payload)</code> checks the parallel-array shape before we zip.",
+    ],
+    code: `<span class="kw">async def</span> <span class="fn">fetch_bitcoin</span>(client, asset, *, start, end, run_id, ingested_at=<span class="kw">None</span>):
+    start_ts = <span class="fn">int</span>(datetime(start.year, start.month, start.day, tzinfo=UTC).timestamp())
+    end_ts   = <span class="fn">int</span>(datetime(end.year, end.month, end.day, <span class="num">23</span>, <span class="num">59</span>, <span class="num">59</span>, tzinfo=UTC).timestamp())
+
+    payload = <span class="kw">await</span> client.get_json(
+        <span class="str">"/coins/bitcoin/market_chart/range"</span>,
+        params={<span class="str">"vs_currency"</span>: <span class="str">"usd"</span>, <span class="str">"from"</span>: start_ts, <span class="str">"to"</span>: end_ts},
+    )
+    chart = CoinGeckoMarketChart.model_validate(payload)
+
+    by_ts = {}
+    <span class="kw">for</span> ts_ms, price <span class="kw">in</span> chart.prices:       by_ts.setdefault(<span class="fn">int</span>(ts_ms), {})[<span class="str">"close"</span>]  = price
+    <span class="kw">for</span> ts_ms, vol   <span class="kw">in</span> chart.total_volumes: by_ts.setdefault(<span class="fn">int</span>(ts_ms), {})[<span class="str">"volume"</span>] = vol
+
+    rows = []
+    <span class="kw">for</span> ts_ms <span class="kw">in</span> <span class="fn">sorted</span>(by_ts):
+        d = datetime.fromtimestamp(ts_ms / <span class="num">1000</span>, tz=UTC).date()
+        <span class="kw">if</span> d &lt; start <span class="kw">or</span> d &gt; end: <span class="kw">continue</span>
+        close = by_ts[ts_ms].get(<span class="str">"close"</span>)
+        <span class="kw">if</span> close <span class="kw">is None</span>: <span class="kw">continue</span>
+        rows.append(BronzeRow(source=<span class="str">"coingecko"</span>, symbol=asset.symbol, date=d,
+                              close=close, volume=by_ts[ts_ms].get(<span class="str">"volume"</span>),
+                              open=<span class="kw">None</span>, high=<span class="kw">None</span>, low=<span class="kw">None</span>,
+                              ingested_at=ingested_at, run_id=run_id))
+    <span class="kw">return</span> rows`,
+    responseCaption: `<span class="method">GET</span> <code>https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=usd&amp;from=1704326400&amp;to=1704585599</code>`,
+    response: `{
+  <span class="key">"prices"</span>: [
+    [<span class="num">1704326400000</span>, <span class="num">44187.24</span>],
+    [<span class="num">1704412800000</span>, <span class="num">42946.68</span>],
+    [<span class="num">1704499200000</span>, <span class="num">43952.11</span>]
+  ],
+  <span class="key">"market_caps"</span>: [
+    [<span class="num">1704326400000</span>, <span class="num">866432110945.17</span>],
+    [<span class="num">1704412800000</span>, <span class="num">842108277893.44</span>],
+    [<span class="num">1704499200000</span>, <span class="num">861573921104.08</span>]
+  ],
+  <span class="key">"total_volumes"</span>: [
+    [<span class="num">1704326400000</span>, <span class="num">23887411294.82</span>],
+    [<span class="num">1704412800000</span>, <span class="num">29140228917.61</span>],
+    [<span class="num">1704499200000</span>, <span class="num">21756834022.93</span>]
+  ]
+}
+
+<span class="com">// Field mapping:</span>
+<span class="com">//   prices[i]        = [ts_ms, close_usd]      → BronzeRow.close + date(ts_ms)</span>
+<span class="com">//   total_volumes[i] = [ts_ms, volume_usd]     → BronzeRow.volume</span>
+<span class="com">//   market_caps[i]   = [ts_ms, market_cap]     → unused (could feed future metrics)</span>
+<span class="com">// Free tier omits OHL entirely — only close + volume. dim_asset marks BTC</span>
+<span class="com">// as price_completeness='close_volume_only' so downstream knows.</span>`,
+  },
+
+  usd_seed: {
+    terminal: true,
+    sub: "SEED · internal",
+    name: "USD synthetic anchor",
+    role: "seed",
+    path: "src/pipeline/ingest/synthetic.py",
+    summary: "Not a provider — a local seed. Emits one <code>close=1.0</code> BronzeRow per day for the <code>USD</code> symbol with <code>source='synthetic'</code>, so the base currency is always present in silver and gold joins stay uniform.",
+    highlights: [
+      "<strong>Numéraire invariant</strong> — the analysis layer treats USD as the base currency; every FX / crypto price is quoted per-USD. Without a USD row per date, gold joins return empty.",
+      "<strong>Avoids a <code>UNION ALL SELECT 1.0</code> hack</strong> in gold SQL — the synthetic row lands in silver as a real, queryable <code>source='synthetic'</code> record, so lineage stays clean.",
+      "<strong>Pinned to <code>['USD']</code></strong> by the <code>dim_asset.base_ccy</code> accepted_values test — any attempt to add a non-USD base currency without updating the analysis layer fails loudly at dbt test time.",
+    ],
+    code: `<span class="kw">def</span> <span class="fn">fetch_usd</span>(*, start, end, run_id, ingested_at):
+    rows = []
+    cur = start
+    <span class="kw">while</span> cur &lt;= end:
+        rows.append(BronzeRow(
+            source=<span class="str">"synthetic"</span>, asset_type=<span class="str">"fx"</span>, symbol=<span class="str">"USD"</span>,
+            date=cur,
+            open=<span class="num">1.0</span>, high=<span class="num">1.0</span>, low=<span class="num">1.0</span>, close=<span class="num">1.0</span>,
+            volume=<span class="kw">None</span>, vwap=<span class="kw">None</span>, trade_count=<span class="kw">None</span>,
+            ingested_at=ingested_at, run_id=run_id,
+        ))
+        cur += timedelta(days=<span class="num">1</span>)
+    <span class="kw">return</span> rows`,
+  },
+  ingest: {
+    sub: "02 · Fetch data",
+    title: "HTTP client with retries and rate limits",
+    components: [
+      { name: "ProviderClient", role: "class", cap: "Shared HTTP client — retries + asyncio.Semaphore capping concurrent requests.",
+        path: "src/pipeline/ingest/client.py",
+        summary: "A wrapper around the HTTP library that adds two things: a retry loop for temporary failures, and an <code>asyncio.Semaphore</code> capping concurrent requests per provider. One wrapper per API (Massive + CoinGecko) so one slow provider can't block the other.",
+        highlights: [
+          "<strong>Retry triggers</strong> — <code>RateLimitError</code> (HTTP 429) and <code>TransientHTTPError</code> (5xx, connect / read timeouts). Any other 4xx (typo'd symbol → 404, bad auth → 401) fails immediately — no point retrying a bug.",
+          "<strong>Backoff</strong> — <code>tenacity.wait_exponential_jitter(initial=1, max=30)</code> so delays grow from 1 s towards a 30 s ceiling with jitter. Capped at <code>max_retries=2</code> → 3 tries total (1 initial + 2 retries). A <code>Retry-After</code> header from the server takes precedence: we <code>asyncio.sleep(wait_s)</code> before raising.",
+          "<strong>reraise=True</strong> — on retry exhaustion the original <code>RateLimitError</code> / <code>TransientHTTPError</code> propagates, not a <code>tenacity.RetryError</code> wrapper. Upstream handlers see the real HTTP error they expect.",
+          "<strong>Concurrency limits</strong> — Massive <code>concurrency=3</code>, CoinGecko <code>concurrency=2</code>, via a per-instance <code>asyncio.Semaphore</code>. Never shared across providers, so one API's latency can't starve the other.",
+        ],
+        code: `<span class="kw">async for</span> attempt <span class="kw">in</span> AsyncRetrying(
+    stop=<span class="fn">stop_after_attempt</span>(self.max_retries + <span class="num">1</span>),
+    wait=<span class="fn">wait_exponential_jitter</span>(initial=<span class="num">1</span>, max=<span class="num">30</span>),
+    retry=<span class="fn">retry_if_exception_type</span>((RateLimitError, TransientHTTPError)),
+    reraise=<span class="kw">True</span>,
+):
+    <span class="kw">with</span> attempt:
+        <span class="kw">async with</span> self._sem:
+            resp = <span class="kw">await</span> self._client.get(url, params=params)
+            <span class="kw">if</span> resp.status_code == <span class="num">429</span>:
+                <span class="kw">await</span> asyncio.sleep(<span class="fn">float</span>(resp.headers[<span class="str">"Retry-After"</span>]))
+                <span class="kw">raise</span> RateLimitError(url)
+            <span class="kw">return</span> resp.json()` },
+      { name: "resolve_range", role: "pure function", cap: "Three-tier priority: explicit > incremental > lookback.",
+        path: "src/pipeline/ingest/orchestrator.py",
+        summary: "Decides which date range to fetch for one ingest run. Three-tier priority: explicit dates from the command line, or (if none) the day after the warehouse's latest date, or (if the warehouse is empty) a default 365-day lookback.",
+        highlights: [
+          "<strong>Manual</strong> — pass <code>--start 2025-01-01 --end 2025-03-31</code> to fetch a specific window. Used for backfills.",
+          "<strong>Catch-up</strong> — if the warehouse has data already and no dates are passed, fetch from the day after the latest stored date up to yesterday. A missed daily run just catches up on its own next time.",
+          "<strong>First-time</strong> — if the warehouse is empty, grab the last 365 days (configurable in <code>settings.yaml</code>).",
+          "<strong>No-op</strong> — if <code>start &gt; end</code> (warehouse is already up to date), the ingest call returns immediately. No wasted API hits on same-day re-runs.",
+        ],
+        code: `<span class="kw">def</span> <span class="fn">resolve_range</span>(silver_maxes, *, start, end, default_lookback_days):
+    today = datetime.now(UTC).date()
+    <span class="kw">if</span> start <span class="kw">is</span> <span class="kw">None</span>:
+        <span class="kw">if</span> silver_maxes:
+            start = <span class="fn">max</span>(silver_maxes.values()) + timedelta(days=<span class="num">1</span>)
+        <span class="kw">else</span>:
+            start = today - timedelta(days=default_lookback_days)
+    <span class="kw">if</span> end <span class="kw">is</span> <span class="kw">None</span>:
+        end = today - timedelta(days=<span class="num">1</span>)
+    <span class="kw">return</span> start, end` },
+      { name: "Rate limits", role: "config", cap: "Per-API concurrency + retry budget in YAML.",
+        path: "config/settings.yaml",
+        summary: "First line of defence against rate-limit errors. We cap how many requests run at once so we rarely hit the API's limit in the first place. Retries are the backup plan, not the primary control.",
+        highlights: [
+          "<strong>Two layers</strong> — the cap on simultaneous requests stops most 429s from happening; retries catch whatever slips through.",
+          "<strong>Per-API separation</strong> — Massive and CoinGecko have their own limits. If one is slow or down, the other keeps working.",
+          "<strong>Limits live in YAML</strong> (<code>settings.yaml</code>). After a paid-tier upgrade, just bump the numbers — no code changes.",
+        ],
+        code: `sources:
+  massive:
+    rate_limit_per_minute: <span class="num">5</span>      <span class="com"># free-tier ceiling</span>
+    concurrency:           <span class="num">3</span>      <span class="com"># semaphore size</span>
+    max_retries:           <span class="num">2</span>      <span class="com"># 2 retries + 1 initial = 3 attempts</span>
+  coingecko:
+    rate_limit_per_minute: <span class="num">10</span>
+    concurrency:           <span class="num">2</span>
+    max_retries:           <span class="num">2</span>` },
+    ],
+  },
+  bronze: {
+    sub: "03 · Raw object storage — S3",
+    title: "Partitioned Parquet files — one per day, overwritten on re-fetch",
+    components: [
+      { name: "bronze_path", role: "pure function", cap: "Fixed file path — same date always maps to the same file.",
+        path: "src/pipeline/storage/bronze.py",
+        summary: "Builds the file path for a bronze file. The same inputs (source, asset_type, date) always give the same path, so a second fetch for the same day overwrites the first instead of creating duplicates.",
+        highlights: [
+          "<strong>Folder layout</strong> — <code>source=X/asset_type=Y/ingested_date=Z/data.parquet</code>. DuckDB reads just the files it needs based on the folder names, without scanning everything.",
+          "<strong>Local FS or S3</strong> — <code>settings.bronze_uri</code> is a prefix: <code>file:///…</code> for local disk, <code>s3://…</code> for cloud. Path logic is identical; <code>fsspec</code> handles the transport so the Python code doesn't care which one you pointed at.",
+          "<strong>No version history</strong> — only the date matters. The 'who ran this and when' info lives in the <code>meta.pipeline_runs</code> table, not in file paths.",
+        ],
+        code: `<span class="kw">def</span> <span class="fn">bronze_path</span>(settings, *, source, asset_type, ingested_date):
+    base = settings.bronze_uri.rstrip(<span class="str">"/"</span>)
+    <span class="kw">return</span> (
+        <span class="str">f"{base}/source={source}/asset_type={asset_type}"</span>
+        <span class="str">f"/ingested_date={ingested_date.isoformat()}/data.parquet"</span>
+    )` },
+      { name: "write_bronze", role: "I/O", cap: "Safe write — writes to a temp file, then renames it into place.",
+        path: "src/pipeline/storage/bronze.py",
+        summary: "Writes bronze rows to a Parquet file in two steps: first a temporary file, then rename into place. If something crashes mid-write, readers never see a half-written file — they see either the old file or the new one, nothing in between.",
+        highlights: [
+          "<strong>POSIX rename is atomic</strong> when source and destination sit in the same directory — the OS either commits or doesn't. A crash mid-<code>pq.write_table</code> leaves only the <code>.tmp.&lt;uuid&gt;.&lt;pid&gt;</code> sibling, never a corrupt <code>data.parquet</code>.",
+          "<strong>S3 via fsspec</strong> — <code>fs.mv(tmp, resolved)</code> does copy + delete under the hood, but from any concurrent reader's view it's still atomic: they see the previous object until the new one fully replaces it.",
+          "<strong>Best-effort cleanup</strong> — the <code>except BaseException</code> branch deletes the tmp file before re-raising. A cleanup failure is swallowed + logged as <code>bronze.write.tmp_cleanup_failed</code> so the original exception still propagates.",
+          "<strong>Schema gate</strong> — <code>BronzeFrame.validate(table.to_pandas(), lazy=True)</code> runs before any byte hits disk. <code>lazy=True</code> surfaces every violation in a single <code>SchemaErrors</code> rather than failing on the first.",
+        ],
+        code: `<span class="kw">def</span> <span class="fn">write_bronze</span>(rows, settings, path) -&gt; <span class="fn">int</span>:
+    records = [r.model_dump() <span class="kw">for</span> r <span class="kw">in</span> rows]
+    <span class="kw">if not</span> records:
+        <span class="kw">return</span> <span class="num">0</span>
+
+    table = pa.Table.from_pylist(records)
+    BronzeFrame.validate(table.to_pandas(), lazy=<span class="kw">True</span>)
+
+    fs, resolved = fsspec.core.url_to_fs(path, **_storage_options(settings))
+    fs.makedirs(resolved.rsplit(<span class="str">"/"</span>, <span class="num">1</span>)[<span class="num">0</span>], exist_ok=<span class="kw">True</span>)
+
+    tmp_path = <span class="str">f"{resolved}.tmp.{uuid.uuid4().hex}.{os.getpid()}"</span>
+    <span class="kw">try</span>:
+        <span class="kw">with</span> fs.open(tmp_path, <span class="str">"wb"</span>) <span class="kw">as</span> fh:
+            pq.write_table(table, fh)
+        fs.mv(tmp_path, resolved)
+    <span class="kw">except</span> <span class="cls">BaseException</span>:
+        <span class="kw">try</span>:
+            <span class="kw">if</span> fs.exists(tmp_path): fs.rm(tmp_path)
+        <span class="kw">except</span> <span class="cls">Exception</span>:
+            log.warning(<span class="str">"bronze.write.tmp_cleanup_failed"</span>, tmp_path=tmp_path)
+        <span class="kw">raise</span>
+    <span class="kw">return</span> <span class="fn">len</span>(records)` },
+      { name: "BronzeFrame", role: "pa.DataFrameModel", cap: "pandera schema — runs before every Parquet write.",
+        path: "src/pipeline/quality/schemas.py",
+        summary: "Class-based pandera schema (<code>pa.DataFrameModel</code>) that enforces types, nullability, allowed values, and non-negative numeric bounds at the DataFrame boundary — complementing the per-row pydantic validation that happens at the HTTP boundary.",
+        highlights: [
+          "<strong>strict=True</strong> — unknown columns raise <code>SchemaError</code>. A silent upstream API field addition can't quietly propagate into bronze.",
+          "<strong>coerce=True</strong> — pandera promotes compatible types (e.g. <code>int</code> → <code>float</code> on <code>volume</code>). Genuine mismatches (<code>str</code> where <code>float</code> is expected) still fail.",
+          "<strong>Check.isin on source + asset_type</strong> — <code>source</code> must be one of <code>massive | coingecko | synthetic</code>; <code>asset_type</code> one of <code>stock | fx | index | crypto</code>. A typo in the orchestrator's provider name or a new asset_type without a schema update is a loud failure, not a corrupt partition.",
+          "<strong>OHL nullable, close non-null</strong> — matches CoinGecko's close-only payload shape. Forces every BTC row to carry a close while letting <code>open/high/low</code> legitimately be null.",
+        ],
+        code: `<span class="kw">class</span> <span class="cls">BronzeFrame</span>(pa.DataFrameModel):
+    source:       Series[<span class="fn">str</span>] = pa.Field(isin=[<span class="str">"massive"</span>, <span class="str">"coingecko"</span>, <span class="str">"synthetic"</span>])
+    asset_type:   Series[<span class="fn">str</span>] = pa.Field(isin=[<span class="str">"stock"</span>, <span class="str">"fx"</span>, <span class="str">"index"</span>, <span class="str">"crypto"</span>])
+    symbol:       Series[<span class="fn">str</span>]
+    date:         Series[pa.DateTime] = pa.Field(nullable=<span class="kw">False</span>)
+    open:         Series[<span class="fn">float</span>] = pa.Field(nullable=<span class="kw">True</span>,  ge=<span class="num">0</span>)
+    high:         Series[<span class="fn">float</span>] = pa.Field(nullable=<span class="kw">True</span>,  ge=<span class="num">0</span>)
+    low:          Series[<span class="fn">float</span>] = pa.Field(nullable=<span class="kw">True</span>,  ge=<span class="num">0</span>)
+    close:        Series[<span class="fn">float</span>] = pa.Field(ge=<span class="num">0</span>)
+    volume:       Series[<span class="fn">float</span>] = pa.Field(nullable=<span class="kw">True</span>,  ge=<span class="num">0</span>)
+    vwap:         Series[<span class="fn">float</span>] = pa.Field(nullable=<span class="kw">True</span>,  ge=<span class="num">0</span>)
+    trade_count:  Series[pa.Int64] = pa.Field(nullable=<span class="kw">True</span>, ge=<span class="num">0</span>)
+    ingested_at:  Series[pa.DateTime]
+    run_id:       Series[<span class="fn">str</span>]
+
+    <span class="kw">class</span> <span class="cls">Config</span>:
+        strict = <span class="kw">True</span>
+        coerce = <span class="kw">True</span>` },
+    ],
+  },
+  silver: {
+    sub: "04 · DB persistent storage",
+    title: "DuckDB table with upsert — one row per (symbol, date)",
+    components: [
+      { name: "merge_into_silver", role: "function", cap: "Last-write-wins upsert · idempotent.",
+        path: "src/pipeline/storage/warehouse.py",
+        summary: "Last-write-wins upsert from a bronze Arrow batch into <code>silver.stg_prices</code>. PK is <code>(symbol, date)</code>; the <code>WHERE EXCLUDED.ingested_at &gt; silver.stg_prices.ingested_at</code> guard on the <code>ON CONFLICT DO UPDATE</code> clause makes the merge safe to replay in any order.",
+        highlights: [
+          "<strong>Idempotent</strong> — identical re-runs are no-ops. A second <code>MERGE</code> with the same <code>ingested_at</code> fails the <code>WHERE</code> guard and silently skips.",
+          "<strong>Out-of-order safe</strong> — if a stale batch arrives after a fresher one (retried worker, backfill race), its older <code>ingested_at</code> loses the comparison and doesn't overwrite.",
+          "<strong>Zero-copy Arrow</strong> — <code>conn.register('bronze_in', bronze_table)</code> exposes the Arrow table to DuckDB without serialising. Single-digit-MB batches merge in microseconds.",
+          "<strong>Explicit transaction</strong> — the single-statement <code>MERGE</code> is auto-commit atomic, but wrapping in <code>BEGIN</code> / <code>COMMIT</code> + <code>ROLLBACK</code> on exception makes the boundary visible and future-proofs the call site if it grows to span multiple statements.",
+        ],
+        code: `<span class="kw">def</span> <span class="fn">merge_into_silver</span>(conn, bronze_table):
+    conn.register(<span class="str">"bronze_in"</span>, bronze_table)
+    conn.execute(<span class="str">"BEGIN TRANSACTION"</span>)
+    <span class="kw">try</span>:
+        conn.execute(<span class="str">"""
+            INSERT INTO silver.stg_prices (...)
+            SELECT ... FROM bronze_in
+            ON CONFLICT (symbol, date) DO UPDATE SET ...
+            WHERE EXCLUDED.ingested_at > silver.stg_prices.ingested_at
+        """</span>)
+        conn.execute(<span class="str">"COMMIT"</span>)
+    <span class="kw">except</span> <span class="cls">BaseException</span>:
+        conn.execute(<span class="str">"ROLLBACK"</span>); <span class="kw">raise</span>` },
+      { name: "DQ assertions", role: "SQL checks", cap: "Four silver-level checks — unique · not-null · bounds · freshness.",
+        path: "src/pipeline/quality/assertions.py",
+        summary: "Four SQL-backed data-quality checks that run after every ingest, before dbt is allowed to build gold. Each check writes an <code>AssertionResult</code> to <code>meta.fact_data_quality_runs</code> via <code>record_dq_result</code> with <code>passed</code>, <code>row_count</code>, <code>severity</code>, and per-check <code>details</code>.",
+        highlights: [
+          "<strong>1. Unique (symbol, date)</strong> — silver PK integrity. Any duplicate is a MERGE bug; <code>severity='error'</code>, fails the run.",
+          "<strong>2. close not-null</strong> — a missing price on a trading day means the fetcher is broken; <code>severity='error'</code>.",
+          "<strong>3. close within bounds</strong> — configurable <code>[close_lower_bound, close_upper_bound]</code> guardrails catch decimal-shift bugs (BTC at $0.68 or AAPL at $180 000); <code>severity='error'</code>.",
+          "<strong>4. Freshness</strong> — <code>max(date)</code> per symbol shouldn't trail <code>as_of</code> by more than <code>quality.freshness_max_lag_days</code>. Severity is <code>error</code> if any symbol is stale, <code>info</code> otherwise — so weekends don't page.",
+          "<strong>Persisted results</strong> — <code>meta.fact_data_quality_runs</code> holds every check's history so the perf report's DQ cell reads the latest count directly, no re-compute.",
+        ],
+        code: `dupes = <span class="fn">_scalar_int</span>(conn, <span class="str">"""
+    SELECT COUNT(*) FROM (
+      SELECT symbol, date, COUNT(*) n
+      FROM silver.stg_prices GROUP BY symbol, date HAVING COUNT(*) &gt; 1
+    )
+"""</span>)
+results.append(AssertionResult(
+    test_name=<span class="str">"silver.unique_symbol_date"</span>,
+    passed=(dupes == <span class="num">0</span>), severity=<span class="str">"error"</span>,
+))` },
+      { name: "track_run", role: "context manager", cap: "Heartbeat row on entry, status on exit, stacktrace on failure.",
+        path: "src/pipeline/observability/run_tracker.py",
+        summary: "Three-state lifecycle row in <code>meta.pipeline_runs</code>. Writes <code>status='running'</code> on entry via <code>_insert_running</code>, updates to <code>success</code> or <code>failed</code> on exit via <code>_finalize_run</code>, captures the full <code>traceback.format_exception(exc)</code> in <code>error_payload</code> on failure.",
+        highlights: [
+          "<strong>Orphan detection</strong> — a <code>SIGKILL</code>, OOM-kill, or power loss leaves a row stuck in <code>running</code> (the <code>finally</code> block never executes). <code>make doctor</code> scans the registry and surfaces them.",
+          "<strong>ULID run_id</strong> — <code>str(ULID())</code> at entry gives every run a time-sortable, globally-unique ID. Foreign-keyed into <code>meta.fact_data_quality_runs</code> so DQ results join back to the exact run that produced them.",
+          "<strong>Row counts persisted</strong> — <code>ctx.rows_by_source</code> is serialised to JSON on completion, giving an at-a-glance read of what the run actually moved without re-querying silver.",
+          "<strong>Complements timed()</strong> — <code>track_run</code> feeds the DuckDB registry (did it succeed?); <code>timed()</code> feeds <code>performance.jsonl</code> (how long did each stage take?). Different consumers, same run.",
+        ],
+        code: `<span class="kw">@contextmanager</span>
+<span class="kw">def</span> <span class="fn">track_run</span>(conn):
+    ctx = RunContext()
+    <span class="fn">_insert_running</span>(conn, ctx)   <span class="com"># status='running'</span>
+    <span class="kw">try</span>:
+        <span class="kw">yield</span> ctx
+        ctx.status = <span class="str">"success"</span>
+    <span class="kw">except</span> <span class="cls">Exception</span> <span class="kw">as</span> exc:
+        ctx.status = <span class="str">"failed"</span>
+        ctx.error_payload = <span class="str">""</span>.join(traceback.format_exception(exc))
+        <span class="kw">raise</span>
+    <span class="kw">finally</span>:
+        <span class="fn">_finalize_run</span>(conn, ctx)` },
+    ],
+  },
+  gold: {
+    sub: "05 · Data modelling — star schema",
+    title: "dbt facts + conforming dimensions ready for analysis",
+    components: [
+      { name: "fact_daily_price", role: "dbt · incremental", cap: "Main prices table — materialized incrementally on (asset_id, date_id).",
+        path: "dbt/models/gold/fact_daily_price.sql",
+        summary: "The main prices table, one row per <code>(asset_id, date_id)</code>. <strong>Materialized incrementally</strong> — only silver rows newer than anything already in the fact get processed. Natural keys (strings like <code>AAPL</code>) get replaced with integer IDs from the dimension tables.",
+        highlights: [
+          "<strong>Incremental predicate</strong> — <code>WHERE p.ingested_at &gt; (SELECT MAX(ingested_at) FROM {{ this }})</code>. A re-run with no new silver data is a trivial 0-row pass.",
+          "<strong>Safety net against duplicates</strong> — dbt uses <code>(asset_id, date_id)</code> as a uniqueness key. If a duplicate somehow slips through, dbt's MERGE handles it.",
+          "<strong>Forward-compatible</strong> — add a new column to silver and this table picks it up on the next run without needing a full rebuild.",
+          "<strong>Uses integer IDs</strong> — joins to <code>dim_asset</code> and <code>dim_date</code> to replace strings with integers, keeping downstream queries fast.",
+        ],
+        code: `{{ config(materialized=<span class="str">'incremental'</span>, unique_key=[<span class="str">'asset_id'</span>, <span class="str">'date_id'</span>]) }}
+
+<span class="kw">SELECT</span> a.asset_id, d.date_id, p.close, p.ingested_at
+<span class="kw">FROM</span> {{ ref(<span class="str">'stg_prices'</span>) }} p
+<span class="kw">JOIN</span> {{ ref(<span class="str">'dim_asset'</span>) }} a <span class="kw">ON</span> a.symbol = p.symbol
+<span class="kw">JOIN</span> {{ ref(<span class="str">'dim_date'</span>) }} d <span class="kw">ON</span> d.date = p.date
+{% if is_incremental() %}
+<span class="kw">WHERE</span> p.ingested_at &gt; (<span class="kw">SELECT COALESCE</span>(<span class="kw">MAX</span>(ingested_at), <span class="cls">TIMESTAMP</span> <span class="str">'1970-01-01'</span>) <span class="kw">FROM</span> {{ this }})
+{% endif %}` },
+      { name: "fact_daily_metrics", role: "dbt · table", cap: "Daily + log returns, rolling returns 7d–365d, 30d vol, BTC relative-perf.",
+        path: "dbt/models/gold/fact_daily_metrics.sql",
+        summary: "Derived metrics on top of <code>fact_daily_price</code>. Per row: <code>daily_return</code>, <code>log_return</code>, rolling returns (7 / 30 / 90 / 180 / 365 days via the <code>rolling_return</code> macro), <code>rolling_vol_30d</code>, and <code>rel_perf_vs_btc</code>. <strong>Full rebuild</strong> by design: window functions over the entire price history would corrupt incremental state on mid-history backfills; at ~3 k rows the rebuild is sub-second.",
+        highlights: [
+          "<strong>Daily / log return</strong> — <code>close / NULLIF(LAG(close) OVER (…ORDER BY date), 0) - 1</code>, and <code>LN(…)</code> of the same ratio. <code>NULLIF</code> guards against a zero prior close.",
+          "<strong>Rolling returns</strong> — a reusable <code>rolling_return(col, date_col, partition, window_days)</code> macro produces 7d / 30d / 90d / 180d / 365d columns in one pass. Calendar-day window — <code>FIRST_VALUE(close) OVER (… RANGE BETWEEN INTERVAL N DAY PRECEDING AND CURRENT ROW)</code> — so a 30-day AAPL return spans the same calendar duration as a 30-day BTC return. Cross-asset comparable; analysis layer reads the column as-is.",
+          "<strong>rolling_vol_30d</strong> — <code>STDDEV(daily_return) OVER (PARTITION BY asset_id ORDER BY date ROWS BETWEEN 29 PRECEDING AND CURRENT ROW)</code>, gated on <code>COUNT(daily_return) &gt;= 30</code> so partial windows return NULL (matches polars' default <code>min_periods=window_size</code>; first 30 rows per asset are NULL). Cheap at 3 k rows; at 30 M+ this would move to a partitioned incremental with a 40-day lookback.",
+          "<strong>rel_perf_vs_btc</strong> — asset's cumulative return minus BTC's cumulative return, both rebased via <code>FIRST_VALUE(close) OVER (PARTITION BY asset_id ORDER BY date)</code> as the baseline. Answers 'am I beating BTC?' over the whole series.",
+        ],
+        code: `{{ config(materialized=<span class="str">'table'</span>) }}
+
+<span class="kw">WITH</span> with_returns <span class="kw">AS</span> (
+    <span class="kw">SELECT</span>
+        f.asset_id, f.date_id, d.date, f.close,
+        (f.close / <span class="kw">NULLIF</span>(<span class="kw">LAG</span>(f.close) <span class="kw">OVER</span> (<span class="kw">PARTITION BY</span> f.asset_id <span class="kw">ORDER BY</span> d.date), <span class="num">0</span>)) - <span class="num">1.0</span> <span class="kw">AS</span> daily_return,
+        <span class="kw">LN</span>(f.close / <span class="kw">NULLIF</span>(<span class="kw">LAG</span>(f.close) <span class="kw">OVER</span> (<span class="kw">PARTITION BY</span> f.asset_id <span class="kw">ORDER BY</span> d.date), <span class="num">0</span>))    <span class="kw">AS</span> log_return
+    <span class="kw">FROM</span> {{ ref(<span class="str">'fact_daily_price'</span>) }} f
+    <span class="kw">JOIN</span> {{ ref(<span class="str">'dim_date'</span>) }}        d <span class="kw">ON</span> d.date_id = f.date_id
+),
+rolling <span class="kw">AS</span> (
+    <span class="kw">SELECT</span> *,
+        {{ rolling_return(<span class="str">'close'</span>, <span class="str">'date'</span>, <span class="str">'asset_id'</span>, <span class="num">7</span>)   }} <span class="kw">AS</span> rolling_return_7d,
+        {{ rolling_return(<span class="str">'close'</span>, <span class="str">'date'</span>, <span class="str">'asset_id'</span>, <span class="num">30</span>)  }} <span class="kw">AS</span> rolling_return_30d,
+        {{ rolling_return(<span class="str">'close'</span>, <span class="str">'date'</span>, <span class="str">'asset_id'</span>, <span class="num">90</span>)  }} <span class="kw">AS</span> rolling_return_90d,
+        {{ rolling_return(<span class="str">'close'</span>, <span class="str">'date'</span>, <span class="str">'asset_id'</span>, <span class="num">180</span>) }} <span class="kw">AS</span> rolling_return_180d,
+        {{ rolling_return(<span class="str">'close'</span>, <span class="str">'date'</span>, <span class="str">'asset_id'</span>, <span class="num">365</span>) }} <span class="kw">AS</span> rolling_return_365d,
+        <span class="kw">CASE WHEN</span> <span class="kw">COUNT</span>(daily_return) <span class="kw">OVER</span> (
+            <span class="kw">PARTITION BY</span> asset_id <span class="kw">ORDER BY</span> date <span class="kw">ROWS BETWEEN</span> <span class="num">29</span> <span class="kw">PRECEDING AND CURRENT ROW</span>
+        ) &gt;= <span class="num">30</span> <span class="kw">THEN</span> <span class="kw">STDDEV</span>(daily_return) <span class="kw">OVER</span> (
+            <span class="kw">PARTITION BY</span> asset_id <span class="kw">ORDER BY</span> date <span class="kw">ROWS BETWEEN</span> <span class="num">29</span> <span class="kw">PRECEDING AND CURRENT ROW</span>
+        ) <span class="kw">END</span> <span class="kw">AS</span> rolling_vol_30d
+    <span class="kw">FROM</span> with_returns
+)
+<span class="kw">SELECT</span> r.*,
+    (r.close / <span class="kw">NULLIF</span>(<span class="kw">FIRST_VALUE</span>(r.close) <span class="kw">OVER</span> (<span class="kw">PARTITION BY</span> r.asset_id <span class="kw">ORDER BY</span> r.date), <span class="num">0</span>)
+     - b.btc_close / <span class="kw">NULLIF</span>(<span class="kw">FIRST_VALUE</span>(b.btc_close) <span class="kw">OVER</span> (<span class="kw">ORDER BY</span> b.date), <span class="num">0</span>)) <span class="kw">AS</span> rel_perf_vs_btc
+<span class="kw">FROM</span> rolling r <span class="kw">LEFT JOIN</span> btc b <span class="kw">ON</span> b.date = r.date` },
+      { name: "dim_asset + dim_date", role: "dbt · conforming dims", cap: "Conforming dimensions — asset info + date info for facts to join to.",
+        path: "dbt/models/gold/dim_*.sql",
+        summary: "Three small lookup tables. <code>dim_asset</code>: one row per trading symbol with its name, data completeness, and base currency. <code>dim_asset_type</code>: the category (stock / fx / index / crypto). <code>dim_date</code>: every observed date with year / quarter / month + <code>is_trading_day</code> from the NYSE calendar. Rebuilt fresh on each run; sub-second at this scale.",
+        highlights: [
+          "<strong>dim_asset</strong> — <code>asset_id</code> (PK via <code>ROW_NUMBER() OVER (ORDER BY symbol)</code>), symbol, asset_type_id, name, source, <code>price_completeness</code> (<code>ohlcv</code> vs <code>close_volume_only</code>), base_ccy. Uses <code>COALESCE</code> defaults when the <code>asset_catalog</code> seed doesn't cover a symbol.",
+          "<strong>dim_asset_type</strong> — tiny lookup (4 rows: stock / fx / index / crypto). A new type needs both a row here and an <code>accepted_values</code> update in <code>dim_asset.asset_type</code>.",
+          "<strong>dim_date</strong> — distinct dates from silver widened with <code>date_id</code> (<code>YYYYMMDD</code>), year, quarter, month, day, dow, and <code>is_trading_day</code>. Authoritative value comes from <code>meta.nyse_calendar</code> (seeded by <code>scripts/seed_dim_date.py</code> via <code>pandas_market_calendars</code>), falling back to <code>dow BETWEEN 1 AND 5</code> if the seed is empty.",
+          "<strong>Tested</strong> for uniqueness on natural + surrogate keys. <code>dim_asset.base_ccy</code> is pinned to <code>['USD']</code> via an <code>accepted_values</code> test — switching base currencies without updating the analysis layer fails the run loudly at dbt-test time.",
+        ],
+        code: `<span class="com">-- dim_asset.sql</span>
+<span class="kw">WITH</span> distinct_assets <span class="kw">AS</span> (
+    <span class="kw">SELECT DISTINCT</span> symbol, asset_type, source <span class="kw">FROM</span> {{ ref(<span class="str">'stg_prices'</span>) }}
+),
+with_type_id <span class="kw">AS</span> (
+    <span class="kw">SELECT</span> d.symbol, d.source, t.asset_type_id, d.asset_type
+    <span class="kw">FROM</span> distinct_assets d
+    <span class="kw">JOIN</span> {{ ref(<span class="str">'dim_asset_type'</span>) }} t <span class="kw">ON</span> t.name = d.asset_type
+)
+<span class="kw">SELECT</span>
+    <span class="kw">ROW_NUMBER</span>() <span class="kw">OVER</span> (<span class="kw">ORDER BY</span> w.symbol) <span class="kw">AS</span> asset_id,
+    w.symbol, <span class="kw">COALESCE</span>(c.name, w.symbol) <span class="kw">AS</span> name,
+    w.asset_type_id, w.asset_type, w.source,
+    <span class="kw">COALESCE</span>(c.price_completeness,
+             <span class="kw">CASE WHEN</span> w.source = <span class="str">'coingecko'</span> <span class="kw">THEN</span> <span class="str">'close_volume_only'</span> <span class="kw">ELSE</span> <span class="str">'ohlcv'</span> <span class="kw">END</span>) <span class="kw">AS</span> price_completeness,
+    <span class="kw">COALESCE</span>(c.base_ccy, <span class="str">'USD'</span>) <span class="kw">AS</span> base_ccy
+<span class="kw">FROM</span> with_type_id w
+<span class="kw">LEFT JOIN</span> {{ ref(<span class="str">'asset_catalog'</span>) }} c <span class="kw">ON</span> c.symbol = w.symbol
+
+<span class="com">-- dim_date.sql (widens distinct silver dates with NYSE-calendar is_trading_day)</span>
+<span class="kw">SELECT</span>
+    <span class="kw">CAST</span>(strftime(date, <span class="str">'%Y%m%d'</span>) <span class="kw">AS</span> <span class="cls">BIGINT</span>) <span class="kw">AS</span> date_id,
+    date, year, quarter, month, day, dow,
+    <span class="kw">COALESCE</span>(cal.is_trading_day, dow <span class="kw">BETWEEN</span> <span class="num">1</span> <span class="kw">AND</span> <span class="num">5</span>) <span class="kw">AS</span> is_trading_day
+<span class="kw">FROM</span> calendar c
+<span class="kw">LEFT JOIN</span> meta.nyse_calendar cal <span class="kw">ON</span> cal.date = c.date` },
+      { name: "dbt tests", role: "YAML", cap: "not_null · unique · relationships · accepted_values · accepted_range.",
+        path: "dbt/models/gold/schema.yml",
+        summary: "Declarative tests that <code>dbt test</code> runs after every <code>dbt run</code> (which <code>make run</code> invokes). A contract between silver and gold — if silver drifts, these fail loudly before the analysis layer touches anything.",
+        highlights: [
+          "<strong>Composite uniqueness</strong> — <code>dbt_utils.unique_combination_of_columns</code> on <code>(asset_id, date_id)</code> enforces the fact grain; any duplicate fails the run.",
+          "<strong>Referential integrity</strong> — <code>relationships</code> tests assert every <code>asset_id</code> in the fact exists in <code>dim_asset</code>; same for <code>date_id</code> → <code>dim_date</code>. Orphaned facts are impossible.",
+          "<strong>Range checks</strong> — <code>dbt_utils.accepted_range</code> on <code>close</code> (<code>(0, 1_000_000)</code>) and <code>volume</code> (<code>≥ 0</code>); <code>dbt_utils.expression_is_true</code> on <code>low ≤ close ≤ high</code> when OHL are all present.",
+          "<strong>Runs post-build, blocks analyze</strong> — <code>dbt test</code> fires right after <code>dbt run</code> inside the transform stage. A failing test raises, so <code>make run</code>'s chain (<code>ingest → transform → analyze</code>) stops before analyze. <code>DATA_REPORTS/</code> keeps the previous good run's HTML instead of regenerating on top of broken gold.",
+        ],
+        code: `<span class="kw">models</span>:
+  - <span class="kw">name</span>: fact_daily_price
+    <span class="kw">tests</span>:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [asset_id, date_id]
+    <span class="kw">columns</span>:
+      - <span class="kw">name</span>: asset_id
+        <span class="kw">tests</span>:
+          - not_null
+          - relationships: {to: ref(<span class="str">'dim_asset'</span>), field: asset_id}` },
+      { name: "dbt docs", role: "lineage", cap: "Interactive DAG — silver → gold dependencies, column descriptions, test coverage.",
+        path: "Makefile · target docs-dbt",
+        summary: "<code>make docs-dbt</code> runs <code>dbt docs generate</code> then <code>dbt docs serve</code>. Generate writes <code>manifest.json</code> + <code>catalog.json</code> into <code>dbt/target/</code>; serve renders them at <code>http://localhost:8080</code> as a clickable lineage graph. Every model, source, seed, and test is a node; edges follow <code>ref()</code> + <code>source()</code> calls. Click any model to see its compiled SQL, columns (with descriptions from <code>schema.yml</code>), and the tests attached to it.",
+        highlights: [
+          "<strong>Lineage at a glance</strong> — the graph view shows the full DAG: <code>stg_prices</code> (silver view) → <code>fact_daily_price</code> + <code>dim_asset</code> + <code>dim_date</code> → <code>fact_daily_metrics</code>. New model lands in the right place automatically — no manual diagram upkeep.",
+          "<strong>Column-level descriptions</strong> — every column documented in <code>schema.yml</code> shows up under the model page. Doubles as a data dictionary that stays in sync with the schema (vs. a separate doc that drifts).",
+          "<strong>Test coverage visible</strong> — the model page lists every test attached (not_null, unique, relationships, accepted_range). Easy to spot a fact column with no tests.",
+          "<strong>Catalog from the warehouse</strong> — <code>catalog.json</code> is built by introspecting DuckDB, so column types and row counts are real (not declared). If a model's actual schema drifts from <code>schema.yml</code>, you see it here.",
+          "<strong>Static artifacts</strong> — <code>dbt/target/manifest.json</code> + <code>catalog.json</code> are the source of truth; the served site is just a viewer. CI can publish the same JSON to a static host (S3 + CloudFront) for a team-wide always-on docs site.",
+        ],
+        code: `<span class="com"># Generate manifest.json + catalog.json, then serve at :8080</span>
+$ make docs-dbt
+
+<span class="com"># Or step-by-step from the dbt/ directory</span>
+$ dbt docs generate    <span class="com"># writes target/manifest.json + target/catalog.json</span>
+$ dbt docs serve       <span class="com"># http://localhost:8080 — graph + per-model pages</span>
+
+<span class="com"># Programmatic consumers (CI, lineage tools, OpenLineage exporters)</span>
+$ jq <span class="str">'.nodes | keys'</span> dbt/target/manifest.json
+[
+  <span class="str">"model.data_platform_poc.dim_asset"</span>,
+  <span class="str">"model.data_platform_poc.dim_date"</span>,
+  <span class="str">"model.data_platform_poc.fact_daily_price"</span>,
+  <span class="str">"model.data_platform_poc.fact_daily_metrics"</span>,
+  <span class="str">"source.data_platform_poc.silver.stg_prices"</span>,
+  ...
+]` },
+    ],
+  },
+  analysis: {
+    sub: "06 · Final reports",
+    title: "Read gold metrics → window/aggregate/simulate in Polars → render charts with Plotly",
+    components: [
+      { name: "returns_by_window", role: "gold consumer", cap: "Return per asset over 7d / 1m / 3m / 6m / ytd / 1y + BTC comparison.",
+        path: "src/analysis/returns.py",
+        summary: "For each asset, picks the precomputed return for several time windows (7d, 1m, 3m, 6m, YTD, 1y) from <code>gold.fact_daily_metrics</code> and compares it to Bitcoin's return over the same window. Each row includes a 'beats BTC' flag for convenience.",
+        highlights: [
+          "<strong>Reads, doesn't recompute</strong> — pulls <code>rolling_return_{7,30,90,180,365}d</code> straight from gold. The medallion contract is 'compute once in dbt, read many in analysis' and this function is the canonical example.",
+          "<strong>Windows configurable</strong> — the list comes from <code>settings.yaml</code> (<code>7d: 7, 1m: 30, 3m: 90, 6m: 180, 1y: 365</code>). Adding a new window is a YAML change; if it isn't one of gold's canonical N-day columns, the function falls back to inline first/last-close from <code>fact_daily_price</code>.",
+          "<strong>YTD special-case</strong> — year-to-date can't be a fixed day count (January 1st moves every year), so it's computed inline from <code>prices</code>; gold can't precompute a window whose length depends on <code>as_of</code>.",
+          "<strong>Row has everything</strong> — <code>{window, symbol, start_date, end_date, return, btc_return, beats_btc}</code>. Self-describing so downstream writers (Markdown, HTML) don't have to recompute anything.",
+          "<strong>beats_btc is three-state</strong> — <code>True</code> / <code>False</code> / <code>None</code>. Null when data is missing or when the row IS Bitcoin (you can't beat yourself).",
+          "<strong>Date is explicit</strong> — tests pin a fixed <code>as_of</code>; production passes the latest date in gold. No hidden <code>datetime.now()</code> calls.",
+        ],
+        code: `<span class="cmt"># Map of canonical window-day counts to the matching gold column.</span>
+_GOLD_ROLLING_RETURN_COLS = {<span class="num">7</span>: <span class="str">"rolling_return_7d"</span>, <span class="num">30</span>: <span class="str">"rolling_return_30d"</span>,
+                             <span class="num">90</span>: <span class="str">"rolling_return_90d"</span>, <span class="num">180</span>: <span class="str">"rolling_return_180d"</span>,
+                             <span class="num">365</span>: <span class="str">"rolling_return_365d"</span>}
+
+<span class="kw">def</span> <span class="fn">returns_by_window</span>(metrics, prices, *, windows_days, as_of, btc_symbol):
+    rows = []
+    symbols = prices[<span class="str">"symbol"</span>].unique().to_list()
+
+    <span class="kw">def</span> <span class="fn">_value_for</span>(sym, days):
+        col = _GOLD_ROLLING_RETURN_COLS.get(days)
+        <span class="kw">if</span> col <span class="kw">is None</span>:
+            <span class="cmt"># Fallback: non-canonical window, inline first/last close.</span>
+            start = as_of - timedelta(days=days)
+            s = prices.filter((pl.col(<span class="str">"symbol"</span>) == sym)
+                              &amp; (pl.col(<span class="str">"date"</span>) &gt;= start)
+                              &amp; (pl.col(<span class="str">"date"</span>) &lt;= as_of)).sort(<span class="str">"date"</span>)
+            <span class="kw">if</span> s.is_empty(): <span class="kw">return None</span>
+            <span class="kw">return</span> float(s.tail(<span class="num">1</span>)[<span class="str">"close"</span>].item()) / float(s.head(<span class="num">1</span>)[<span class="str">"close"</span>].item()) - <span class="num">1.0</span>
+        <span class="kw">return</span> _last_value_at_or_before(metrics, symbol=sym, column=col, as_of=as_of)
+
+    <span class="cmt"># Fixed-length windows: read straight from gold.</span>
+    <span class="kw">for</span> label, days <span class="kw">in</span> windows_days.items():
+        btc_ret = _value_for(btc_symbol, days)
+        w_start = as_of - timedelta(days=days)
+        <span class="kw">for</span> sym <span class="kw">in</span> symbols:
+            ret = _value_for(sym, days)
+            rows.append({<span class="str">"window"</span>: label, <span class="str">"symbol"</span>: sym,
+                         <span class="str">"start_date"</span>: w_start, <span class="str">"end_date"</span>: as_of,
+                         <span class="str">"return"</span>: ret, <span class="str">"btc_return"</span>: btc_ret,
+                         <span class="str">"beats_btc"</span>: (<span class="kw">None</span> <span class="kw">if</span> ret <span class="kw">is None or</span> btc_ret <span class="kw">is None or</span>
+                                       sym == btc_symbol <span class="kw">else</span> ret &gt; btc_ret)})
+
+    <span class="cmt"># YTD: variable-length window, computed inline from prices.</span>
+    ytd_start = date(as_of.year, <span class="num">1</span>, <span class="num">1</span>)
+    btc_ytd = _ytd_return(prices, symbol=btc_symbol, year=as_of.year, as_of=as_of)
+    <span class="kw">for</span> sym <span class="kw">in</span> symbols:
+        ret = _ytd_return(prices, symbol=sym, year=as_of.year, as_of=as_of)
+        rows.append({<span class="str">"window"</span>: <span class="str">"ytd"</span>, <span class="str">"symbol"</span>: sym,
+                     <span class="str">"start_date"</span>: ytd_start, <span class="str">"end_date"</span>: as_of,
+                     <span class="str">"return"</span>: ret, <span class="str">"btc_return"</span>: btc_ytd,
+                     <span class="str">"beats_btc"</span>: (<span class="kw">None</span> <span class="kw">if</span> ret <span class="kw">is None or</span> btc_ytd <span class="kw">is None or</span>
+                                   sym == btc_symbol <span class="kw">else</span> ret &gt; btc_ytd)})
+    <span class="kw">return</span> pl.DataFrame(rows)` },
+      { name: "dca", role: "simulation", cap: "DCA simulation — monthly buys over N months.",
+        path: "src/analysis/dca.py",
+        summary: "Simulates <strong>dollar-cost averaging</strong>: 'buy $X worth of this asset on the 1st of each month for 12 months'. Runs the monthly buys against historical prices and reports the final value. Used by the Q3 chart in the analysis report.",
+        highlights: [
+          "<strong>Buy day</strong> — the 1st of each month by default. If that day is a weekend or holiday, we fall forward to the next day with a price.",
+          "<strong>Fractional units</strong> — each $100 deposit buys <code>$100 / price</code> shares / coins. The running average across all buys is your cost basis (the dotted line in the Q3 chart).",
+          "<strong>Runs out of data?</strong> — if we hit a date with no price history, the simulation stops and returns however many months actually executed.",
+          "<strong>Deterministic</strong> — same inputs always give the same output. Tests pin specific price series and check exact buy dates.",
+          "<strong>Defaults from YAML</strong> — $100 / month × 12 months, buying on the 1st — all configurable in <code>settings.yaml</code> under <code>analysis.dca</code>.",
+        ],
+        code: `<span class="kw">def</span> <span class="fn">dca</span>(prices, *, symbol, monthly_amount_usd, months, start, as_of, buy_day_of_month=<span class="num">1</span>) -&gt; DCAResult | <span class="kw">None</span>:
+    buys = []
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="fn">range</span>(months):
+        target = (start + relativedelta(months=i)).replace(day=buy_day_of_month)
+        fill = <span class="fn">_price_on_or_after</span>(prices, symbol=symbol, target=target)
+        <span class="kw">if</span> fill <span class="kw">is None</span>: <span class="kw">break</span>     <span class="com"># ran past available data</span>
+        executed_date, price = fill
+        buys.append((executed_date, price, monthly_amount_usd / price))
+
+    <span class="kw">if not</span> buys: <span class="kw">return None</span>
+    last = <span class="fn">_latest_price</span>(prices, symbol=symbol, as_of=as_of)
+    <span class="kw">if</span> last <span class="kw">is None</span>: <span class="kw">return None</span>
+    _, final_price = last
+
+    total_invested = monthly_amount_usd * <span class="fn">len</span>(buys)
+    total_units    = <span class="fn">sum</span>(u <span class="kw">for</span> _, _, u <span class="kw">in</span> buys)
+    current_value  = total_units * final_price
+    <span class="kw">return</span> DCAResult(
+        symbol=symbol, monthly_amount_usd=monthly_amount_usd,
+        months=<span class="fn">len</span>(buys),
+        total_invested_usd=total_invested, total_units=total_units,
+        final_price_usd=final_price, current_value_usd=current_value,
+        pnl_usd=current_value - total_invested,
+        total_return=(current_value - total_invested) / total_invested,
+        buys=buys,
+    )` },
+      { name: "correlation_matrix", role: "gold consumer", cap: "Pearson correlation · pivots gold's daily_return · inner-joined on date.",
+        path: "src/analysis/correlation.py",
+        summary: "Wide Pearson correlation matrix on gold's precomputed <code>daily_return</code>, <strong>windowed to <code>(as_of - lookback_days, as_of]</code></strong>. Filters out zero-variance symbols before the compute (so the synthetic USD series doesn't poison the matrix with NaN), then inner-joins on date via <code>pivot</code> + <code>drop_nulls()</code>. The square correlation matrix shape itself is presentation-layer, so it stays out of gold.",
+        highlights: [
+          "<strong>Reads gold's <code>daily_return</code></strong> — no <code>shift(1)</code> in polars; the per-day return is precomputed in <code>fact_daily_metrics</code>. The function pivots and correlates rather than recomputing the math.",
+          "<strong>Windowed to 1 y by default</strong> (<code>lookback_days=365</code>) — matches the rest of the analysis layer. A multi-year warehouse would drift the matrix away from the 1-year story the report tells.",
+          "<strong>Open-on-the-left filter</strong> — <code>date &gt; start</code> not <code>&gt;=</code>. Mirrors the prior polars path, which dropped the boundary-date row whose <code>shift(1)</code> within the slice was null. Keeps Pearson values bit-identical to the pre-migration baseline.",
+          "<strong>Zero-variance filter</strong> — <code>group_by('symbol').agg(std())</code> then drop rows where stdev ≤ 0. The synthetic USD seed (<code>close=1.0</code>) is the primary case; the filter is generic so any constant-price series gets the same treatment.",
+          "<strong>Pivot + inner join</strong> — long-format returns pivoted to one column per symbol via <code>wide = pivot(values='daily_return', index='date', on='symbol').drop_nulls()</code> — keeping only dates where every remaining symbol has a return.",
+          "<strong>Polars-native corr</strong> — <code>wide.select(symbols).corr()</code> rather than <code>np.corrcoef</code>. Same result, one fewer dependency.",
+          "<strong>Statistical caveat</strong> — ~252 observations is a small sample. A correlation like 0.14 (BTC vs GOOGL) isn't statistically different from zero at reasonable confidence.",
+        ],
+        code: `<span class="kw">def</span> <span class="fn">correlation_matrix</span>(metrics, *, as_of, lookback_days=<span class="num">365</span>):
+    start = as_of - timedelta(days=lookback_days)
+    <span class="com"># Strict <code>date &gt; start</code> matches the prior polars path's boundary-drop behaviour</span>
+    <span class="com"># and keeps Pearson values bit-identical to the pre-migration baseline.</span>
+    windowed = metrics.filter((pl.col(<span class="str">"date"</span>) &gt; start) &amp; (pl.col(<span class="str">"date"</span>) &lt;= as_of)).drop_nulls(<span class="str">"daily_return"</span>)
+
+    <span class="com"># Drop zero-variance symbols (e.g. synthetic USD at close=1.0) so Pearson's</span>
+    <span class="com"># stdev denominator never hits zero.</span>
+    non_flat = (windowed.group_by(<span class="str">"symbol"</span>)
+                .agg(pl.col(<span class="str">"daily_return"</span>).std().alias(<span class="str">"stdev"</span>))
+                .filter(pl.col(<span class="str">"stdev"</span>) &gt; <span class="num">0</span>).select(<span class="str">"symbol"</span>))
+    windowed = windowed.join(non_flat, on=<span class="str">"symbol"</span>, how=<span class="str">"inner"</span>)
+
+    wide = windowed.pivot(
+        values=<span class="str">"daily_return"</span>, index=<span class="str">"date"</span>, on=<span class="str">"symbol"</span>, aggregate_function=<span class="str">"first"</span>
+    ).drop_nulls()
+    symbols = [c <span class="kw">for</span> c <span class="kw">in</span> wide.columns <span class="kw">if</span> c != <span class="str">"date"</span>]
+    corr_values = wide.select(symbols).corr().to_numpy()
+    <span class="kw">return</span> pl.DataFrame({<span class="str">"symbol"</span>: symbols} | {s: corr_values[:, i].tolist() <span class="kw">for</span> i, s <span class="kw">in</span> <span class="fn">enumerate</span>(symbols)})` },
+      { name: "write_html_report", role: "plotly", cap: "Writes data_analysis.html + data_analysis_static.html to DATA_REPORTS/.",
+        path: "src/analysis/html_report.py",
+        summary: "Renders the data-analysis report — hero, KPI band, palette legend, five numbered sections (Q1–Q4 + correlation), footer. Emits two variants into <code>DATA_REPORTS/</code> from a single body template: CDN (~700 KB, needs internet) and static (~5 MB, Plotly inlined, fully self-contained).",
+        highlights: [
+          "<strong>Single body, two wrappers</strong> — only the <code>plotly_js</code> argument to <code>_fig_html</code> differs (<code>'cdn'</code> vs <code>'inline'</code> on the first chart, <code>False</code> on every subsequent chart so Plotly isn't re-embedded). Charts + stories built once, body template called twice.",
+          "<strong>Theme tokens in code</strong> — <code>PAPER_0..4</code>, <code>AXIS_LINE</code>, <code>TICK_COLOR</code> are Python constants. Chart theming applied via <code>_apply_chart_theme</code>, matching the light-mode report.",
+          "<strong>Palette legend data-driven</strong> — takes a <code>(symbol, name)</code> list from <code>yaml_cfg.assets</code>, so renaming an asset in YAML updates the legend automatically.",
+          "<strong>Stories pull from frames</strong> — <code>_q1_story</code> through <code>_corr_story</code> compute their numbers directly from the polars frames, so narrative text never drifts from the chart values.",
+        ],
+        code: `<span class="kw">def</span> <span class="fn">write_html_report</span>(*, analysis, as_of, row_counts, prices,
+                       returns_df, lump_df, dca_df, vol_df, corr_df,
+                       assets=<span class="kw">None</span>) -&gt; Path:
+    q1_main    = <span class="fn">_q1_chart</span>(prices, btc_symbol, as_of)
+    q1_winners = <span class="fn">_q1_winners_chart</span>(returns_df, btc_symbol)
+    q2_growth  = <span class="fn">_q2_growth_chart</span>(prices, lump_df, btc_symbol, as_of)
+    q3_fig     = <span class="fn">_q3_timeseries</span>(prices, analysis, as_of)
+    q4_scatter = <span class="fn">_q4_risk_return_chart</span>(vol_df, lump_df, btc_symbol)
+    corr_fig   = <span class="fn">_corr_chart</span>(corr_df)
+    <span class="com"># ... q1_story … corr_story, KPI band, palette legend, hero stats ...</span>
+
+    cdn_doc    = <span class="fn">_wrap</span>(<span class="fn">_build_body</span>(<span class="str">"cdn"</span>))
+    static_doc = <span class="fn">_wrap</span>(<span class="fn">_build_body</span>(<span class="str">"inline"</span>))
+    cdn_path    = DATA_REPORT_DIR / <span class="str">"data_analysis.html"</span>
+    static_path = DATA_REPORT_DIR / <span class="str">"data_analysis_static.html"</span>
+    cdn_path.write_text(cdn_doc)
+    static_path.write_text(static_doc)
+    <span class="kw">return</span> cdn_path` },
+    ],
+  },
+};
+
+// ---------- Wires + packet ----------
+const pipeline = document.getElementById("pipeline");
+const wiresWrap = document.getElementById("wires");
+const packet = document.getElementById("packet");
+let segments = [];
+
+// Two segment groups:
+//   fanInSegs  — 3 wires, one per source (Massive / USD seed / CoinGecko) → Ingest
+//   mainSegs   — 4 wires through the main chain (Ingest → Bronze → Silver → Gold → Analysis)
+// Animation plays fan-in (3 simultaneous packets converging) then switches to
+// a single packet riding the main chain.
+let fanInSegs = [];
+let mainSegs  = [];
+
+function buildWires() {
+  const wiresRect = wiresWrap.getBoundingClientRect();
+  const w = wiresRect.width, h = wiresRect.height;
+  wiresWrap.innerHTML = `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"></svg>`;
+  const svg = wiresWrap.querySelector("svg");
+  fanInSegs = [];
+  mainSegs  = [];
+
+  const addSeg = (into, x1, y1, x2, y2, outColor, inColor) => {
+    const mx = (x1 + x2) / 2;
+    const d = `M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+    const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    p.setAttribute("d", d);
+    svg.appendChild(p);
+    into.push({ path: p, length: p.getTotalLength(), outColor, inColor });
+  };
+
+  // Fan-in: one wire per source → Ingest's left edge.
+  const ingestEl  = document.querySelector(`.stage[data-stage="ingest"]`);
+  const ingestRect = ingestEl.getBoundingClientRect();
+  const ix = ingestRect.left - wiresRect.left;
+  const iy = (ingestRect.top + ingestRect.bottom) / 2 - wiresRect.top;
+  const sourceKeys = ["massive", "usd_seed", "coingecko"];
+  for (const key of sourceKeys) {
+    const node = document.querySelector(`[data-stage="${key}"]`);
+    if (!node) continue;
+    const r = node.getBoundingClientRect();
+    addSeg(
+      fanInSegs,
+      r.right - wiresRect.left, (r.top + r.bottom) / 2 - wiresRect.top,
+      ix, iy,
+      STAGE_COLORS[key], STAGE_COLORS.ingest,
+    );
+  }
+
+  // Main chain: ingest → bronze → silver → gold → analysis.
+  const nodes = STAGE_ORDER.map(k => document.querySelector(`.stage[data-stage="${k}"]`));
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const a = nodes[i].getBoundingClientRect();
+    const b = nodes[i + 1].getBoundingClientRect();
+    addSeg(
+      mainSegs,
+      a.right - wiresRect.left, (a.top + a.bottom) / 2 - wiresRect.top,
+      b.left  - wiresRect.left, (b.top + b.bottom) / 2 - wiresRect.top,
+      STAGE_COLORS[STAGE_ORDER[i]],
+      STAGE_COLORS[STAGE_ORDER[i + 1]],
+    );
+  }
+}
+
+// Source packets — one DOM element per fan-in wire. Created lazily so we
+// don't hardcode a count in the HTML. Kept in pipeline coordinate space
+// alongside the main packet.
+let sourcePackets = [];
+function ensureSourcePackets(n) {
+  while (sourcePackets.length < n) {
+    const el = document.createElement("div");
+    el.className = "packet source-packet";
+    el.style.opacity = "0";
+    pipeline.appendChild(el);
+    sourcePackets.push(el);
+  }
+  // Hide any excess packets if the source count shrinks (unlikely but safe).
+  for (let i = n; i < sourcePackets.length; i++) sourcePackets[i].style.opacity = "0";
+}
+
+/* State machine:
+     idle → lightup (480ms) → fan (620ms) → main (4 × 520ms)
+          → hold (500ms)    → dim (700ms) → idle …
+
+   Scheduler .active is ON during lightup + fan + main + hold (packet in
+   flight). Removing .active triggers the slow CSS fade for the "dim"
+   beat before the cycle restarts.
+*/
+const LIGHTUP_MS   = 480;   // scheduler lights up before the packet moves
+const FAN_IN_MS    = 620;
+const SEGMENT_MS   = 520;
+const HOLD_MS      = 500;   // packet rests on Analysis while scheduler still lit
+const DIM_MS       = 700;   // fade-out window after .active is removed
+const schedFrame = document.querySelector(".sched-frame");
+
+let rafId = null;
+let phase = "idle";   // "idle" | "lightup" | "fan" | "main" | "hold" | "dim"
+let phaseT = null;
+
+function paintPacket(el, x, y, col) {
+  el.style.opacity = "1";
+  el.style.color = col;
+  el.style.background = col;
+  el.style.left = `${x}px`;
+  el.style.top  = `${y}px`;
+}
+
+function hidePacket(el) { el.style.opacity = "0"; }
+
+function step(now) {
+  if (!mainSegs.length) return;
+  if (phaseT === null) phaseT = now;
+  if (now < phaseT) { rafId = requestAnimationFrame(step); return; }
+  const elapsed = now - phaseT;
+
+  const wiresRect    = wiresWrap.getBoundingClientRect();
+  const pipelineRect = pipeline.getBoundingClientRect();
+  const offX = wiresRect.left - pipelineRect.left;
+  const offY = wiresRect.top  - pipelineRect.top;
+
+  if (phase === "idle") {
+    // Kick off: light up the scheduler; packet stays hidden for a beat so
+    // the user sees "the orchestrator woke" before anything starts moving.
+    hidePacket(packet);
+    sourcePackets.forEach(hidePacket);
+    schedFrame.classList.add("active");
+    phase = "lightup";
+    phaseT = now;
+    rafId = requestAnimationFrame(step);
+    return;
+  }
+
+  if (phase === "lightup") {
+    if (elapsed >= LIGHTUP_MS) {
+      phase = "fan";
+      phaseT = now;
+    }
+    rafId = requestAnimationFrame(step);
+    return;
+  }
+
+  if (phase === "fan") {
+    // Three packets travel their respective source → ingest wires in
+    // parallel. When they all arrive, hand off to the main packet.
+    if (elapsed >= FAN_IN_MS) {
+      sourcePackets.forEach(hidePacket);
+      phase = "main";
+      phaseT = now;
+      rafId = requestAnimationFrame(step);
+      return;
+    }
+    ensureSourcePackets(fanInSegs.length);
+    const progress = elapsed / FAN_IN_MS;
+    fanInSegs.forEach((seg, i) => {
+      const pt = seg.path.getPointAtLength(progress * seg.length);
+      const col = progress < 0.5 ? seg.outColor : seg.inColor;
+      paintPacket(sourcePackets[i], pt.x + offX, pt.y + offY, col);
+    });
+    rafId = requestAnimationFrame(step);
+    return;
+  }
+
+  if (phase === "main") {
+    const segIdx = Math.floor(elapsed / SEGMENT_MS);
+    if (segIdx >= mainSegs.length) {
+      // Packet arrived at Analysis — park it on the node centre, then the
+      // "hold" phase will fade it out so it doesn't sit stuck on the node.
+      const analysisEl = document.querySelector(`.stage[data-stage="analysis"]`);
+      const r = analysisEl.getBoundingClientRect();
+      const cx = r.left + r.width / 2 - pipelineRect.left;
+      const cy = r.top  + r.height / 2 - pipelineRect.top;
+      paintPacket(packet, cx, cy, STAGE_COLORS.analysis);
+      phase = "hold";
+      phaseT = now;
+      rafId = requestAnimationFrame(step);
+      return;
+    }
+    const seg = mainSegs[segIdx];
+    const progress = (elapsed - segIdx * SEGMENT_MS) / SEGMENT_MS;
+    const pt = seg.path.getPointAtLength(progress * seg.length);
+    const col = progress < 0.5 ? seg.outColor : seg.inColor;
+    paintPacket(packet, pt.x + offX, pt.y + offY, col);
+    rafId = requestAnimationFrame(step);
+    return;
+  }
+
+  if (phase === "hold") {
+    // Packet is parked on Analysis. Fade its opacity from 1 → 0 across the
+    // hold duration so it visibly "gets consumed" by the node rather than
+    // popping off mid-frame. Scheduler stays fully lit throughout.
+    const t = Math.min(elapsed / HOLD_MS, 1);
+    packet.style.opacity = `${1 - t}`;
+    if (elapsed >= HOLD_MS) {
+      hidePacket(packet);                        // snap to 0 for safety
+      sourcePackets.forEach(hidePacket);
+      schedFrame.classList.remove("active");     // CSS fade kicks in
+      phase = "dim";
+      phaseT = now;
+    }
+    rafId = requestAnimationFrame(step);
+    return;
+  }
+
+  // phase === "dim"
+  // Scheduler border/halo finish their slow CSS fade; nothing left to
+  // animate on the packet side. Just wait out the dim window, then reset.
+  if (elapsed >= DIM_MS) {
+    phase = "idle";
+    phaseT = now;
+  }
+  rafId = requestAnimationFrame(step);
+}
+
+function startPacket() {
+  cancelAnimationFrame(rafId);
+  phase = "idle";
+  phaseT = null;
+  hidePacket(packet);
+  sourcePackets.forEach(hidePacket);
+  schedFrame.classList.remove("active");
+  rafId = requestAnimationFrame(step);
+}
+
+
+// Rebuild wires + restart packet animation on resize. On tablet/mobile the
+// wires are `display: none` (media query) so their clientWidth is 0 — bail
+// early to avoid burning CPU on a no-op animation loop.
+const ro = new ResizeObserver(() => {
+  const wiresVisible = wiresWrap.offsetWidth > 0 && wiresWrap.offsetHeight > 0;
+  cancelAnimationFrame(rafId);
+  if (!wiresVisible) {
+    hidePacket(packet);
+    sourcePackets.forEach(hidePacket);
+    schedFrame.classList.remove("active");
+    return;
+  }
+  buildWires();
+  startPacket();
+});
+ro.observe(pipeline);
+
+// ---------- Scheduler / Recovery popovers ----------
+// FLIP the popover from the clicked band: measure band center, measure
+// popover target center, seed CSS vars with the offset so the popover
+// starts scaled-down at the band and animates back to identity.
+const schedShell = document.getElementById("sched-shell");
+const recShell   = document.getElementById("rec-shell");
+const schedBand  = document.getElementById("sched-top");
+const recBand    = document.getElementById("sched-bot");
+
+const activeBandFor = new Map();  // shell → band that triggered it
+
+function openPopover(shell, band) {
+  const pop = shell.querySelector(".popover");
+  activeBandFor.set(shell, band);
+
+  // Measure target rect without animating: reset transform, make the shell
+  // renderable (visibility visible) but keep the panel invisible so no flash.
+  pop.classList.remove("animating");
+  pop.style.setProperty("--ox", "0px");
+  pop.style.setProperty("--oy", "0px");
+  pop.style.transform = "translate(0,0) scale(1)";
+  pop.style.opacity = "0";
+  shell.classList.add("open");        // shell visible
+  const popR = pop.getBoundingClientRect();
+  const srcR = band.getBoundingClientRect();
+  const ox = (srcR.left + srcR.width  / 2) - (popR.left + popR.width  / 2);
+  const oy = (srcR.top  + srcR.height / 2) - (popR.top  + popR.height / 2);
+
+  // Snap back to the band-origin start state with no transition, then flip
+  // into animating mode so the .open CSS rule takes over and grows it.
+  pop.style.transform = "";
+  pop.style.opacity = "";
+  pop.style.setProperty("--ox", ox + "px");
+  pop.style.setProperty("--oy", oy + "px");
+  shell.classList.remove("open");
+  void pop.offsetHeight;              // commit start state
+  requestAnimationFrame(() => {
+    pop.classList.add("animating");
+    shell.classList.add("open");
+  });
+}
+
+function closePopover(shell) {
+  const pop = shell.querySelector(".popover");
+  const band = activeBandFor.get(shell);
+  if (band) {
+    // Re-measure in case viewport resized while open — ensures the close
+    // collapse lands back on the band even if layout shifted.
+    const popR = pop.getBoundingClientRect();
+    const srcR = band.getBoundingClientRect();
+    const ox = (srcR.left + srcR.width  / 2) - (popR.left + popR.width  / 2);
+    const oy = (srcR.top  + srcR.height / 2) - (popR.top  + popR.height / 2);
+    pop.style.setProperty("--ox", ox + "px");
+    pop.style.setProperty("--oy", oy + "px");
+  }
+  shell.classList.remove("open");
+  setTimeout(() => {
+    pop.classList.remove("animating");
+    activeBandFor.delete(shell);
+  }, 400);
+}
+
+schedBand.addEventListener("click", () => openPopover(schedShell, schedBand));
+recBand.addEventListener("click", () => openPopover(recShell, recBand));
+
+document.querySelectorAll("[data-popover-close]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const key = btn.dataset.popoverClose;
+    if (key === "sched") closePopover(schedShell);
+    if (key === "rec")   closePopover(recShell);
+  });
+});
+[schedShell, recShell].forEach(shell => {
+  shell.addEventListener("click", (e) => { if (e.target === shell) closePopover(shell); });
+});
+
+// ---------- FLIP zoom ----------
+const zoomNode = document.getElementById("zoom-node");
+const zoomNodePanel = document.getElementById("zoom-node-panel");
+const zoomNodeSub = document.getElementById("zoom-node-sub");
+const zoomNodeTitle = document.getElementById("zoom-node-title");
+const zoomNodeComps = document.getElementById("zoom-node-components");
+
+const zoomComp = document.getElementById("zoom-comp");
+const zoomCompPanel = document.getElementById("zoom-comp-panel");
+const zoomCompSub = document.getElementById("zoom-comp-sub");
+const zoomCompTitle = document.getElementById("zoom-comp-title");
+const zoomCompPath = document.getElementById("zoom-comp-path");
+const zoomCompRole = document.getElementById("zoom-comp-role");
+const zoomCompSummary = document.getElementById("zoom-comp-summary");
+const zoomCompHighlights = document.getElementById("zoom-comp-highlights");
+const zoomCompCode = document.getElementById("zoom-comp-code");
+const zoomCompResponse = document.getElementById("zoom-comp-response");
+const zoomCompResponseCap = document.getElementById("zoom-comp-response-caption");
+const tabResponse = document.getElementById("tab-response");
+
+let currentStageKey = null;
+let currentStageEl = null;    // for FLIP on close
+let currentCompEl = null;
+
+// Measure the panel's natural rect (when un-transformed) and set CSS vars
+// that translate+scale it onto the source element's rect. That becomes the
+// "from" state of the FLIP; the "to" state is `translate(0,0) scale(1)` via
+// the `.zoom-layer.open .zoom-panel` rule.
+function applyFlipFrom(layer, sourceEl) {
+  const panel = layer.querySelector(".zoom-panel");
+  const srcR = sourceEl.getBoundingClientRect();
+  // Temporarily force the identity transform so we can read the natural rect.
+  panel.style.transform = "none";
+  const tgtR = panel.getBoundingClientRect();
+  panel.style.transform = "";
+  // Scale factor so the panel's natural box visually collapses to the
+  // source node's box (pick the larger ratio so it hugs the node tightly).
+  const s = Math.max(srcR.width / tgtR.width, srcR.height / tgtR.height);
+  const ox = (srcR.left + srcR.width  / 2) - (tgtR.left + tgtR.width  / 2);
+  const oy = (srcR.top  + srcR.height / 2) - (tgtR.top  + tgtR.height / 2);
+  panel.style.setProperty("--ox", `${ox}px`);
+  panel.style.setProperty("--oy", `${oy}px`);
+  panel.style.setProperty("--s",  s);
+}
+
+function flipOpen(layer, panel, sourceEl, populate) {
+  /* FLIP via transform:
+     1. Populate content so the natural panel rect is accurate.
+     2. Temporarily reveal the layer (no animation) so we can measure.
+     3. Compute from-state translate+scale so the panel visually sits at
+        the source node's rect. Set vars, commit, then next frame flip to
+        the identity transform — panel grows from the node. */
+  populate();
+  panel.classList.remove("animating");
+  layer.classList.add("open");              // reveal for measurement
+  applyFlipFrom(layer, sourceEl);           // compute + set --ox/--oy/--s
+  layer.classList.remove("open");           // back to hidden start state
+  void panel.offsetHeight;                  // commit the "from" transform
+  requestAnimationFrame(() => {
+    panel.classList.add("animating");
+    layer.classList.add("open");
+  });
+}
+
+function flipClose(layer, panel, sourceEl, cleanup) {
+  /* Reverse: re-measure (handles viewport resize), re-seed the transform
+     vars, then drop .open so the rule reverts to the from-state. */
+  if (sourceEl) applyFlipFrom(layer, sourceEl);
+  layer.classList.remove("open");
+  setTimeout(() => {
+    panel.classList.remove("animating");
+    cleanup?.();
+  }, 420);
+}
+
+function openNode(key, sourceEl) {
+  const stage = STAGES[key];
+  if (!stage) return;
+  currentStageKey = key;
+  currentStageEl = sourceEl;
+  zoomNode.classList.remove("under");
+
+  flipOpen(zoomNode, zoomNodePanel, sourceEl, () => {
+    const col = STAGE_COLORS[key];
+    zoomNodePanel.style.setProperty("--accent", col);
+    zoomNodeSub.style.color = col;
+    zoomNodeSub.textContent = stage.sub;
+    zoomNodeTitle.textContent = stage.title;
+
+    zoomNodeComps.innerHTML = "";
+    stage.components.forEach((c, idx) => {
+      const btn = document.createElement("button");
+      btn.className = "comp-card";
+      btn.style.setProperty("--accent", col);
+      btn.innerHTML = `
+        <div class="c-head">
+          <div class="c-name" style="color:${col}">${c.name}</div>
+          <div class="c-role">${c.role}</div>
+        </div>
+        <p class="c-cap">${c.cap}</p>`;
+      btn.addEventListener("click", () => openComp(key, idx, btn));
+      zoomNodeComps.appendChild(btn);
+    });
+    sourceEl.classList.add("zooming");
+  });
+}
+
+function closeNode() {
+  flipClose(zoomNode, zoomNodePanel, currentStageEl, () => {
+    currentStageEl?.classList.remove("zooming");
+    currentStageEl = null;
+    currentStageKey = null;
+  });
+}
+
+function openComp(stageKey, idx, sourceEl) {
+  const stage = STAGES[stageKey];
+  const c = stage.components[idx];
+  const col = STAGE_COLORS[stageKey];
+  currentCompEl = sourceEl;
+  zoomNode.classList.add("under");   // drop node layer below comp layer
+
+  flipOpen(zoomComp, zoomCompPanel, sourceEl, () => {
+    zoomCompPanel.style.setProperty("--accent", col);
+    zoomCompSub.style.color = col;
+    zoomCompSub.textContent = `${stage.sub.split(" · ")[0]} · ${c.name}`;
+    zoomCompTitle.textContent = c.name;
+    zoomCompPath.textContent = c.path;
+    zoomCompPath.style.color = col;
+    zoomCompRole.textContent = c.role;
+    zoomCompSummary.innerHTML = c.summary || "";
+    // Wrap highlight content in a single <div> so it's one flex item.
+    zoomCompHighlights.innerHTML = (c.highlights || [])
+      .map(h => `<li><div>${h}</div></li>`).join("");
+    zoomCompCode.innerHTML = c.code;
+    applyResponseTab(c);
+    resetTabsToOverview();
+  });
+}
+
+/* Toggle the "Example response" tab based on whether the component ships a
+   real JSON payload. Massive + CoinGecko do; everything else doesn't, so the
+   tab just hides. */
+function applyResponseTab(source) {
+  const hasResponse = !!source.response;
+  tabResponse.hidden = !hasResponse;
+  if (hasResponse) {
+    zoomCompResponse.innerHTML = source.response;
+    zoomCompResponseCap.innerHTML = source.responseCaption || "";
+  } else {
+    zoomCompResponse.innerHTML = "";
+    zoomCompResponseCap.innerHTML = "";
+  }
+}
+
+function resetTabsToOverview() {
+  zoomComp.querySelectorAll(".tab").forEach(t => {
+    t.classList.toggle("active", t.dataset.tab === "overview");
+  });
+  zoomComp.querySelectorAll(".tab-panel").forEach(p => {
+    p.classList.toggle("active", p.dataset.panel === "overview");
+  });
+}
+
+function closeComp() {
+  flipClose(zoomComp, zoomCompPanel, currentCompEl, () => {
+    zoomNode.classList.remove("under");
+    currentCompEl = null;
+  });
+}
+
+// Tab switching inside the component zoom
+zoomComp.querySelectorAll(".tab").forEach(tab => {
+  tab.addEventListener("click", () => {
+    const target = tab.dataset.tab;
+    zoomComp.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t === tab));
+    zoomComp.querySelectorAll(".tab-panel").forEach(p => {
+      p.classList.toggle("active", p.dataset.panel === target);
+    });
+  });
+});
+
+/* Opens a terminal stage (massive / coingecko / usd_seed) directly into the
+   component-zoom layer. Each terminal IS a single component, so the
+   intermediate "stage view with a grid of 1 card" would be empty padding. */
+function openTerminal(key, sourceEl) {
+  const t = STAGES[key];
+  if (!t) return;
+  const col = STAGE_COLORS[key];
+  currentCompEl = sourceEl;
+  zoomNode.classList.add("under");  // send phantom node layer behind
+
+  flipOpen(zoomComp, zoomCompPanel, sourceEl, () => {
+    zoomCompPanel.style.setProperty("--accent", col);
+    zoomCompSub.style.color = col;
+    zoomCompSub.textContent = t.sub;
+    zoomCompTitle.textContent = t.name;
+    zoomCompPath.textContent = t.path;
+    zoomCompPath.style.color = col;
+    zoomCompRole.textContent = t.role;
+    zoomCompSummary.innerHTML = t.summary || "";
+    zoomCompHighlights.innerHTML = (t.highlights || [])
+      .map(h => `<li><div>${h}</div></li>`).join("");
+    zoomCompCode.innerHTML = t.code;
+    applyResponseTab(t);
+    resetTabsToOverview();
+  });
+}
+
+// Stage + terminal click handlers
+document.querySelectorAll(".stage, .seed-node").forEach(el => {
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const key = el.dataset.stage;
+    if (TERMINAL_STAGES.has(key)) openTerminal(key, el);
+    else                           openNode(key, el);
+  });
+});
+
+// Close buttons + backdrops — single wiring via data-close
+document.querySelectorAll("[data-close]").forEach(el => {
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const target = el.dataset.close;
+    if (target === "comp") closeComp();
+    if (target === "node") closeNode();
+  });
+});
+
+// Esc — close deepest first
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (zoomComp.classList.contains("open")) { closeComp(); return; }
+  if (zoomNode.classList.contains("open")) { closeNode(); return; }
+  if (schedShell.classList.contains("open")) { closePopover(schedShell); return; }
+  if (recShell.classList.contains("open"))   { closePopover(recShell); return; }
+});
+
+// Kick off — only if wires are actually rendered (they're hidden on
+// tablet/mobile). The ResizeObserver will pick things up if the viewport
+// grows past the breakpoint.
+if (wiresWrap.offsetWidth > 0 && wiresWrap.offsetHeight > 0) {
+  buildWires();
+  startPacket();
+}
+</script>
+</body>
+</html>

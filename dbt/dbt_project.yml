@@ -1,0 +1,33 @@
+name: data_platform_poc
+version: 0.1.0
+config-version: 2
+
+profile: data_platform_poc
+
+model-paths: ["models"]
+macro-paths: ["macros"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+snapshot-paths: ["snapshots"]
+
+target-path: target
+clean-targets:
+  - target
+  - dbt_packages
+
+models:
+  data_platform_poc:
+    silver:
+      # Dir name mirrors the medallion layer being exposed (Python owns
+      # silver.stg_prices). Schema stays `staging` so the dbt view and the
+      # underlying table don't collide on schema-qualified name.
+      +schema: staging
+      +materialized: view
+    gold:
+      +schema: gold
+      +materialized: table
+      fact_daily_price:
+        +materialized: incremental
+        +unique_key: ["asset_id", "date_id"]
+        +on_schema_change: append_new_columns
