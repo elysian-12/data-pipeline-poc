@@ -9,7 +9,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from pipeline.config import get_settings, get_yaml_config
-from pipeline.ingest.http import provider
+from pipeline.ingest.client import provider
 from pipeline.observability.logging import configure_logging, get_logger
 
 FIXTURES = Path("tests/fixtures/api_responses")

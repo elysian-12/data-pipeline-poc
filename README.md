@@ -16,14 +16,14 @@ dbt-managed lineage, typed boundaries, and a full test suite.
 
 ## At a glance
 
-|                       |                                                                                                                                                                                                         |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Run one thing**     | `make run` — incremental ingest → transform → analyze (see [Quickstart](#quickstart))                                                                                                                   |
-| **Answers**           | [`DATA_REPORTS/data_analysis.html`](DATA_REPORTS/) (visual panel) + [`DATA_REPORTS/data_analysis.md`](DATA_REPORTS/) (text summary) — tables land in [`outputs/`](outputs/)                             |
-| **Data flow**         | Bronze Parquet → DuckDB Silver (MERGE) → dbt Gold (star schema)                                                                                                                                         |
+|                       |                                                                                                                                                                                                                      |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Run one thing**     | `make run` — incremental ingest → transform → analyze (see [Quickstart](#quickstart))                                                                                                                                |
+| **Answers**           | [`DATA_REPORTS/data_analysis.html`](DATA_REPORTS/) (visual panel) + [`DATA_REPORTS/data_analysis.md`](DATA_REPORTS/) (text summary) — tables land in [`outputs/`](outputs/)                                          |
+| **Data flow**         | Bronze Parquet → DuckDB Silver (MERGE) → dbt Gold (star schema)                                                                                                                                                      |
 | **Ingestion cadence** | `make init` once on fresh clones (bootstrap + run); `make run` for recurring ingest → transform → analyze; install daily 02:00 UTC cron with `make schedule` (cron calls `make run`) — see [Scheduling](#scheduling) |
-| **Storage**           | Local by default; `BRONZE_URI=s3://…` flips to S3 — no code change                                                                                                                                      |
-| **Warehouse**         | DuckDB embedded; ClickHouse port documented in [ADR 0001](docs/decisions/0001-duckdb-default-clickhouse-scale.md)                                                                                       |
+| **Storage**           | Local by default; `BRONZE_URI=s3://…` flips to S3 — no code change                                                                                                                                                   |
+| **Warehouse**         | DuckDB embedded; ClickHouse port documented in [ADR 0001](docs/decisions/0001-duckdb-default-clickhouse-scale.md)                                                                                                    |
 
 ---
 
@@ -81,6 +81,7 @@ Narrative reports land in [`DATA_REPORTS/`](DATA_REPORTS/) at the repo root (sep
 - `data_analysis.md` — text summary with the 4 answers
 - `data_analysis.html` — visual panel (plotly loaded from CDN; ~700 KB, renders on GitHub, requires internet): % change lines, grouped-bar window winners, growth-of-$1k, DCA-vs-lump BTC time series, rolling annualised volatility, risk-return scatter, correlation heatmap, each paired with a short storytelling paragraph
 - `data_analysis_static.html` — same panel with plotly.js inlined (~5 MB); self-contained static build that works without network
+- `performance_report.html` — per-stage wall-time and peak-RSS panel rendered from [`outputs/performance.jsonl`](outputs/) (one record per `timed()` block); shows the latest run plus a sparkline of the last N runs so regressions surface visually
 
 ---
 
@@ -201,69 +202,45 @@ load-bearing.
 
 Full reference for every `make` target. For the three run scenarios (from-scratch / incremental / backfill) see [Quickstart](#quickstart).
 
-| Command                        | What it does                                                            |
-| ------------------------------ | ----------------------------------------------------------------------- |
-| `make run`                     | Full pipeline (incremental ingest → dbt → analyze)                      |
-| `make ingest`                  | Ingest only                                                             |
-| `make transform`               | `dbt run` + `dbt test`                                                  |
-| `make analyze`                 | Compute the 5 output tables + reports                                   |
-| `make backfill START= END=`    | Explicit historical range                                               |
-| `make backfill-gaps`           | Auto-detect + refill missing trading days                               |
-| `make doctor`                  | Health check — recent runs, freshness, DQ failures, suggested fixes     |
-| `make test`                    | `ruff` + `mypy` + `pytest` + `dbt parse`                                |
-| `make lint` / `make typecheck` | `ruff check` + format check / `mypy --strict`                           |
-| `make docs-dbt`                | `dbt docs generate && dbt docs serve`                                   |
-| `make clean`                   | Remove `data/`, `outputs/`, `logs/`, `dbt/target/`, caches              |
+| Command                        | What it does                                                        |
+| ------------------------------ | ------------------------------------------------------------------- |
+| `make run`                     | Full pipeline (incremental ingest → dbt → analyze)                  |
+| `make ingest`                  | Ingest only                                                         |
+| `make transform`               | `dbt run` + `dbt test`                                              |
+| `make analyze`                 | Compute the 5 output tables + reports                               |
+| `make backfill START= END=`    | Explicit historical range                                           |
+| `make backfill-gaps`           | Auto-detect + refill missing trading days                           |
+| `make doctor`                  | Health check — recent runs, freshness, DQ failures, suggested fixes |
+| `make test`                    | `ruff` + `mypy` + `pytest` + `dbt parse`                            |
+| `make lint` / `make typecheck` | `ruff check` + format check / `mypy --strict`                       |
+| `make docs-dbt`                | `dbt docs generate && dbt docs serve`                               |
+| `make clean`                   | Remove `data/`, `outputs/`, `logs/`, `dbt/target/`, caches          |
 
 ---
 
 ## Design decisions & trade-offs
 
-Short summary; full decision records live in
-[docs/decisions/](docs/decisions/).
+Full records in [docs/decisions/](docs/decisions/).
 
-| Choice                                                                                                         | Why                                                                                                                                                                                                                                                                             |
-| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **DuckDB primary, ClickHouse documented** ([ADR 0001](docs/decisions/0001-duckdb-default-clickhouse-scale.md)) | DuckDB and ClickHouse share ~95% SQL dialect and both have first-class dbt adapters. DuckDB is zero-infra — `uv sync → make run`. ClickHouse is theatre at 3k rows; the port is a profile swap + MergeTree engine.                                                              |
-| **Bronze Parquet over fsspec** ([ADR 0002](docs/decisions/0002-bronze-parquet-fsspec-s3-ready.md))             | `BRONZE_URI` controls backend; local FS by default, `s3://…` in prod with zero code change. Deterministic paths per `(source, asset_type, ingested_date)` make re-runs idempotent by overwrite — storage is bounded by `sources × asset_types × days`, not by invocation count. |
-| **dbt-core for transforms** ([ADR 0003](docs/decisions/0003-dbt-for-transforms.md))                            | Lineage, tests, and docs come for free. Adapter-neutral SQL keeps the ClickHouse port one profile swap away.                                                                                                                                                                    |
-| **Typer CLI + cron over Airflow** ([ADR 0004](docs/decisions/0004-cron-over-airflow.md))                       | One daily run, 8 API calls. Airflow overhead is 100× the work. README includes a 10-line Airflow DAG stub showing module entrypoints map 1:1 to tasks.                                                                                                                          |
-| **Single fact with nullable OHL** ([ADR 0005](docs/decisions/0005-single-fact-nullable-ohlc.md))               | Splitting facts per source grain complicates correlation/vol joins. `dim_asset.price_completeness` distinguishes `ohlcv` vs `close_volume_only`.                                                                                                                                |
+| Choice                                                                                                         | Why                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| **DuckDB primary, ClickHouse documented** ([ADR 0001](docs/decisions/0001-duckdb-default-clickhouse-scale.md)) | Zero-infra at 3k rows; ~95% SQL overlap means the port is a profile swap.                               |
+| **Bronze Parquet over fsspec** ([ADR 0002](docs/decisions/0002-bronze-parquet-fsspec-s3-ready.md))             | `BRONZE_URI` swaps local FS ↔ `s3://…` with no code change; deterministic paths make replay idempotent. |
+| **dbt-core for transforms** ([ADR 0003](docs/decisions/0003-dbt-for-transforms.md))                            | Lineage, tests, docs free; adapter-neutral SQL.                                                         |
+| **Typer CLI + cron over Airflow** ([ADR 0004](docs/decisions/0004-cron-over-airflow.md))                       | 8 API calls/day. Airflow is 100× the work.                                                              |
+| **Single fact, nullable OHL** ([ADR 0005](docs/decisions/0005-single-fact-nullable-ohlc.md))                   | One join surface; `dim_asset.price_completeness` flags grain.                                           |
 
 ### Key trade-offs (not in ADRs)
 
-In-code decisions too narrow for a full ADR but worth surfacing.
+- **`fact_daily_metrics` full-rebuild** — window functions over `date`; mid-history inserts invalidate downstream. < 1 s at 3k rows; incremental with `lookback_days` at >1M.
+- **Calendar semantics per-metric** — per-asset metrics use each asset's own calendar; cross-asset metrics inner-join on `date`. Forward-filling BTC onto trading days would inflate correlation.
+- **Rolling returns are calendar-day windows** — `rolling_return_Nd` uses `RANGE BETWEEN INTERVAL N DAY PRECEDING` ([macro](dbt/macros/rolling_return.sql)), not `LAG(close, N)`. 30-day AAPL = 30-day BTC in calendar duration. Analysis reads gold columns as-is — "compute once in gold, read many in analysis" is the medallion contract.
+- **Silver MERGE is last-write-wins on `ingested_at`** — same-day replay is a no-op; corrected-price backfill wins.
+- **Pandera `BronzeFrame` `strict=True`** — schema drift halts the pipeline; new field = 3-file edit. See [Schema evolution](#schema-evolution).
+- **`dim_asset` is Type-1** — provider changes overwrite; SCD-2 is a one-model upgrade.
+- **DuckDB single-writer lock** — CLI serializes ingest → dbt → analyze; no horizontal scale until ClickHouse swap.
 
-- **Bronze idempotent by overwrite** — deterministic path per `(source,
-asset_type, ingested_date)`; `ingested_at`/`run_id` are in-row. A replay
-  stomps the file — bounded storage, at the cost of losing prior-run bytes.
-- **`fact_daily_metrics` full-rebuild** — rolling windows + vol + rel-perf
-  are window functions over `date`; mid-history insert invalidates
-  everything downstream. < 1 s at 3k rows; minutes at 100M (see
-  [Performance](#performance)).
-- **Calendar semantics per-metric** — per-asset metrics use each asset's
-  own calendar; cross-asset metrics inner-join on `date`. Forward-filling
-  BTC onto trading days would inflate correlation.
-- **Rolling returns are calendar-day windows** —
-  `rolling_return_Nd` uses `RANGE BETWEEN INTERVAL N DAY PRECEDING` (gold's
-  [rolling_return.sql macro](dbt/macros/rolling_return.sql)), not `LAG(close, N)`. A 30-day
-  AAPL return spans the same calendar duration as a 30-day BTC return —
-  cross-asset comparable. The analysis layer reads these columns as-is
-  rather than recomputing in polars; "compute once in gold, read many in
-  analysis" is the whole point of the medallion split.
-- **Silver MERGE is last-write-wins on `ingested_at`** — re-running the
-  same day is a no-op; a later backfill with corrected prices wins.
-- **Pandera `BronzeFrame` is `strict=True`** — extra columns fail the
-  write; schema drift halts the pipeline. Cost: new field = 3-file edit.
-  See [Schema evolution](#schema-evolution).
-- **`dim_asset` is Type-1** — provider changes overwrite history. Fine
-  while the asset roster is small; SCD-2 is a one-model upgrade.
-- **DuckDB single-writer lock** — CLI serializes ingest → dbt → analyze
-  in one process. Zero concurrency code; no horizontal ingest scaling
-  until the ClickHouse swap.
-
-USD-as-numéraire is the biggest trade-off — promoted to its own section
-at the top; see [Core assumption](#core-assumption--usd-is-the-numéraire).
+USD-as-numéraire is the biggest trade-off — see [Core assumption](#core-assumption--usd-is-the-numéraire).
 
 ---
 
@@ -273,19 +250,12 @@ at the top; see [Core assumption](#core-assumption--usd-is-the-numéraire).
 | ---------------------- | ------------------------------------------------------- | ---------------------------------------------------------- |
 | **Bronze**             | Local Parquet                                           | `BRONZE_URI=s3://…` + MinIO in CI                          |
 | **Warehouse**          | DuckDB (embedded)                                       | ClickHouse — profile swap + MergeTree engine               |
-| **Orchestrator**       | cron + Makefile                                         | Airflow / Prefect — module entrypoints map 1:1 to tasks    |
+| **Orchestrator**       | cron + Makefile                                         | Airflow — module entrypoints map 1:1 to tasks              |
 | **Secrets**            | `.env` via pydantic-settings                            | AWS Secrets Manager / Vault                                |
 | **Monitoring**         | structlog JSON + `meta.pipeline_runs` + healthchecks.io | Ship logs to Loki/Elasticsearch; alert on DQ test failures |
 | **Ingest concurrency** | `asyncio.Semaphore` per provider                        | Same — limits are API-side, not infra-side                 |
 
-S3 bronze is proven, not aspirational — `fsspec` + `pyarrow` handle the
-switch without edits. See
-[ADR 0002](docs/decisions/0002-bronze-parquet-fsspec-s3-ready.md).
-
-**What breaks first at scale:** DuckDB's single-writer lock (ClickHouse
-swap), then `fact_daily_metrics` full-rebuild (incremental with
-`lookback_days` if > 1M rows). Bronze and ingest scale cleanly — ingest is
-API-bound, not infra-bound.
+S3 bronze works without code edits ([ADR 0002](docs/decisions/0002-bronze-parquet-fsspec-s3-ready.md)). **First bottleneck:** DuckDB's single-writer lock (→ ClickHouse). **Second:** `fact_daily_metrics` full-rebuild (→ incremental at >1M rows). Bronze + ingest scale cleanly (API-bound).
 
 ### 10-line Airflow DAG (migration stub)
 
@@ -306,46 +276,36 @@ with DAG("assets_vs_btc", start_date=datetime(2026, 1, 1),
 
 ## Schema evolution
 
-The pipeline _fails closed_ on drift — silent schema changes in analytics
-are the highest-leverage source of wrong-answer bugs.
+Fails closed on drift — silent schema changes are the worst wrong-answer source.
 
-| Change upstream          | Triggers                            | Action                                        |
-| ------------------------ | ----------------------------------- | --------------------------------------------- |
-| New optional field       | Nothing (pydantic ignores unknowns) | No action                                     |
-| New required field       | Pydantic `ValidationError`          | Update [models.py](src/pipeline/models.py)    |
-| New column in bronze     | Pandera rejects (`strict=True`)     | 3-file edit: pydantic → pandera → bronze path |
-| New silver/gold column   | Manual                              | `ALTER TABLE ADD COLUMN` + dbt model update   |
-| Removed/renamed upstream | Pydantic fails                      | Update model; placeholder if silver needs it  |
+| Change upstream          | Triggers                            | Action                                       |
+| ------------------------ | ----------------------------------- | -------------------------------------------- |
+| New optional field       | Nothing (pydantic ignores unknowns) | None                                         |
+| New required field       | Pydantic `ValidationError`          | Update [models.py](src/pipeline/models.py)   |
+| New column in bronze     | Pandera rejects (`strict=True`)     | 3-file edit: pydantic → pandera → bronze     |
+| New silver/gold column   | Manual                              | `ALTER TABLE ADD COLUMN` + dbt model         |
+| Removed/renamed upstream | Pydantic fails                      | Update model; placeholder if silver needs it |
 
-**Non-features:** no migration tool (DDL is `CREATE TABLE IF NOT EXISTS`;
-`ALTER`s are manual), no schema-version column (Arrow schema is embedded
-in Parquet; silver/gold rely on live DDL), no producer-side data contracts
-(pydantic is the implicit contract). See [Known gaps](#known-gaps).
+**Non-features:** no migration tool, no schema-version column, no producer-side contracts (pydantic is the implicit contract). See [Known gaps](#known-gaps).
 
 ---
 
 ## Performance
 
-Full `make run` on the 365-day window (8 symbols, ~3k fact rows), MacBook
-M-series, local bronze:
+Full `make run`, 365-day window (8 symbols, ~3k rows), MacBook M-series:
 
-| Stage             | Wall time    | Dominant cost                                           |
-| ----------------- | ------------ | ------------------------------------------------------- |
-| Ingest            | 3–8 s        | API round-trips (8 calls, semaphored per-provider)      |
-| Bronze write      | < 100 ms     | Parquet encode + atomic `mv`                            |
-| Silver MERGE      | < 500 ms     | DuckDB `INSERT … ON CONFLICT`, one txn per batch        |
-| dbt run           | 1–3 s        | 6 models; `fact_daily_metrics` full rebuild is the bulk |
-| dbt test          | < 1 s        | 42 schema tests + 1 singular                            |
-| Analysis (polars) | < 500 ms     | Filter / aggregate gold; DCA + lump-sum simulations     |
-| HTML report       | < 1 s        | Jinja + inline plotly.js                                |
-| **Total**         | **~10–15 s** | End-to-end                                              |
+| Stage        | Wall time    | Dominant cost                                         |
+| ------------ | ------------ | ----------------------------------------------------- |
+| Ingest       | 3–8 s        | API round-trips (8 calls, per-provider semaphore)     |
+| Bronze write | < 100 ms     | Parquet encode + atomic `mv`                          |
+| Silver MERGE | < 500 ms     | DuckDB `INSERT … ON CONFLICT`                         |
+| dbt run      | 1–3 s        | 6 models; `fact_daily_metrics` full rebuild dominates |
+| dbt test     | < 1 s        | 42 schema + 2 singular                                |
+| Analysis     | < 500 ms     | Filter/aggregate gold + DCA/lump-sum sims             |
+| HTML report  | < 1 s        | Jinja + inline plotly.js                              |
+| **Total**    | **~10–15 s** | End-to-end                                            |
 
-**Leverage points if it needs to go faster:** raise the per-provider
-semaphore (halves ingest until Massive 429s); read Parquet directly from
-DuckDB instead of round-tripping polars (~2×); make `fact_daily_metrics`
-incremental with a `lookback_days` window (only worth it > 1M rows).
-
-No perf regression test yet — see [Known gaps](#known-gaps).
+**Speedups if needed:** raise per-provider semaphore (halves ingest); read Parquet straight into DuckDB (~2×); `fact_daily_metrics` incremental with `lookback_days` (only worth it >1M rows). No perf regression test — see [Known gaps](#known-gaps).
 
 ---
 
@@ -414,12 +374,6 @@ make unschedule CRON_SCRIPT=/tmp/dpp-cron-test.sh
 rm /tmp/dpp-cron-test.sh /tmp/dpp-cron-fires.log
 ```
 
-> **macOS first-run note**: the *first* time a shell modifies your user
-> crontab, macOS may prompt Terminal (or your shell app) for Full Disk Access.
-> Grant it once via *System Settings → Privacy & Security → Full Disk Access*;
-> subsequent `make schedule` / `make unschedule` invocations run without
-> prompts.
-
 ---
 
 ## Data quality & observability
@@ -429,48 +383,36 @@ rm /tmp/dpp-cron-test.sh /tmp/dpp-cron-fires.log
 Non-zero exit propagates to cron `MAILTO` and healthchecks.io. Results
 persist, so history is queryable without re-running.
 
-| Gate                                           | Checks                                                                                                                                                                                                | Where                                                                                                       |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| **Pydantic v2**                                | API payload shape at HTTP boundary                                                                                                                                                                    | [models.py](src/pipeline/models.py)                                                                         |
-| **Pandera `BronzeFrame`** (`strict`, `coerce`) | `close` not-null; enum `source`/`asset_type`; OHLCV ≥ 0; type coercion                                                                                                                                | [quality/schemas.py](src/pipeline/quality/schemas.py) → [storage/bronze.py](src/pipeline/storage/bronze.py) |
-| **Silver SQL assertions**                      | `unique_symbol_date`, `close_not_null`, `close_within_bounds`, per-symbol `freshness` (configurable lag)                                                                                              | [quality/assertions.py](src/pipeline/quality/assertions.py)                                                 |
+| Gate                                           | Checks                                                                                                                                                                                                                                                                                                                     | Where                                                                                                       |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **Pydantic v2**                                | API payload shape at HTTP boundary                                                                                                                                                                                                                                                                                         | [models.py](src/pipeline/models.py)                                                                         |
+| **Pandera `BronzeFrame`** (`strict`, `coerce`) | `close` not-null; enum `source`/`asset_type`; OHLCV ≥ 0; type coercion                                                                                                                                                                                                                                                     | [quality/schemas.py](src/pipeline/quality/schemas.py) → [storage/bronze.py](src/pipeline/storage/bronze.py) |
+| **Silver SQL assertions**                      | `unique_symbol_date`, `close_not_null`, `close_within_bounds`, per-symbol `freshness` (configurable lag)                                                                                                                                                                                                                   | [quality/assertions.py](src/pipeline/quality/assertions.py)                                                 |
 | **dbt tests (gold)**                           | PK uniqueness + not-null on dims; FK `relationships` on both facts; OHLC ordering (`low ≤ {open,close} ≤ high`); `daily_return ∈ (−1, 1)`; `volume ≥ 0`; `base_ccy = 'USD'` (numéraire invariant); `source ∈ [massive, coingecko, synthetic]`; singular [no_calendar_gaps_stock.sql](dbt/tests/no_calendar_gaps_stock.sql) | [dbt/models/gold/schema.yml](dbt/models/gold/schema.yml)                                                    |
 
-Silver results land in `meta.fact_data_quality_runs` with `(run_id,
-test_name, run_ts, passed, row_count, severity, details)` —
-[run_tracker.py:104](src/pipeline/observability/run_tracker.py#L104).
-Covers completeness, uniqueness, validity, consistency, timeliness;
-**accuracy** is the missing dimension — see [Known gaps](#known-gaps).
+Silver results persist to `meta.fact_data_quality_runs` (`run_id, test_name, run_ts, passed, row_count, severity, details` — [run_tracker.py:104](src/pipeline/observability/run_tracker.py#L104)). Covers completeness, uniqueness, validity, consistency, timeliness; **accuracy** is the missing dimension ([Known gaps](#known-gaps)).
 
 ### Failure handling
 
-Any dbt test failing → `dbt test` exits non-zero → [`_run_dbt`](src/pipeline/cli.py#L155) raises `SystemExit(rc)` → `track_run` catches, sets `meta.pipeline_runs.status = 'failed'`, persists the traceback to `error_payload`, and re-raises. Cron's `MAILTO` gets stderr; healthchecks.io goes red. `make doctor` lists the failed run and the specific failing test row-counts from `meta.fact_data_quality_runs`. Silver SQL assertions follow the same pattern: any `severity='error'` row raises `RuntimeError` in [`_do_ingest`](src/pipeline/cli.py#L35), which stops the pipeline before dbt ever runs.
+dbt test fails → non-zero exit → [`_run_dbt`](src/pipeline/cli.py#L155) raises `SystemExit` → `track_run` flips `meta.pipeline_runs.status='failed'`, persists traceback, re-raises. Cron `MAILTO` mails stderr; healthchecks.io goes red; `make doctor` shows the failed run + offending test rows. Silver assertions: `severity='error'` raises `RuntimeError` in [`_do_ingest`](src/pipeline/cli.py#L35), short-circuiting before dbt.
 
 ### Test-layer ownership
 
-- **dbt tests** = data-model invariants (schemas, FKs, column ranges, OHLC ordering) — everything that must be true of the *warehouse tables*.
-- **pytest** = Python code behaviour (`tests/unit/`: returns math, UTC handling, DCA logic, atomic writes; `tests/snapshot/`: end-to-end output stability).
-- **Silver SQL assertions** = fail-fast at silver so dbt never runs on known-bad data; configurable via `config/settings.yaml`.
+- **dbt tests** — warehouse-table invariants (schemas, FKs, ranges, OHLC ordering).
+- **pytest** — Python behaviour: `tests/unit/` (math/UTC/DCA/atomic writes), `tests/snapshot/` (golden outputs).
+- **Silver SQL assertions** — fail-fast before dbt; configurable via `config/settings.yaml`.
 
-No cross-layer duplication — each check lives in exactly one place.
+Each check lives in exactly one layer.
 
 ### Observability
 
-- **Exit codes** → cron `MAILTO` mails stderr.
-- **Structured logs** — `structlog` JSON at `logs/pipeline-YYYY-MM-DD.log`,
-  shippable to Loki/Elasticsearch.
-- **Run history** — `meta.pipeline_runs`: `run_id` (ULID), timestamps,
-  status, `rows_by_source`, `error_payload`, `git_sha`. Inserted `running`
-  on entry, updated on exit; orphan `running` rows surface via
-  `make doctor`. One `track_run` wraps ingest + dbt + analyze, so failures
-  downstream of ingest carry the same `run_id`
-  ([run_tracker.py:40](src/pipeline/observability/run_tracker.py#L40)).
-- **DQ history** — `meta.fact_data_quality_runs` (see above).
-- **Healthchecks.io** (optional) — dead-man's-switch if cron itself fails
-  to fire.
+- **Exit codes** → cron `MAILTO` stderr.
+- **Logs** — structlog JSON at `logs/pipeline-YYYY-MM-DD.log`; ship to Loki/Elasticsearch.
+- **Run history** — `meta.pipeline_runs`: ULID `run_id`, timestamps, status, `rows_by_source`, `error_payload`, `git_sha`. Single `track_run` wraps ingest + dbt + analyze ([run_tracker.py:40](src/pipeline/observability/run_tracker.py#L40)); orphan `running` rows surface via `make doctor`.
+- **DQ history** — `meta.fact_data_quality_runs`.
+- **Healthchecks.io** (optional) — dead-man's switch.
 
-`make doctor` = one-command health summary: latest runs, freshness, DQ
-failures, suggested backfill on gaps.
+`make doctor` = one-command health: runs, freshness, DQ failures, suggested backfills.
 
 ---
 
@@ -478,36 +420,41 @@ failures, suggested backfill on gaps.
 
 ```
 data-pipeline-poc/
-├── README.md                 # ← you are here
+├── README.md
+├── ARCHITECTURE.html         # standalone C4 + sequence diagrams
 ├── Makefile                  # install | bootstrap | ingest | transform |
 │                             # analyze | run | backfill | backfill-gaps |
 │                             # doctor | test | lint | typecheck | ci
+├── Dockerfile                # uv + pipeline runtime image
 ├── pyproject.toml            # uv-managed; ruff, mypy --strict, pytest
 ├── .env.example
 ├── .github/workflows/ci.yml  # ruff + mypy + pytest + dbt parse
 ├── config/settings.yaml      # assets, rate limits, DCA rule, analysis windows
-├── src/pipeline/
-│   ├── cli.py                # Typer entrypoint
-│   ├── config.py             # pydantic-settings (env + YAML)
-│   ├── models.py             # pydantic v2 API response schemas
-│   ├── ingest/               # http, massive, coingecko, orchestrator
-│   ├── storage/              # bronze (Parquet), warehouse (DuckDB MERGE)
-│   ├── analysis/             # returns, DCA, correlation, outputs
-│   ├── quality/              # pandera schemas + SQL assertions
-│   └── observability/        # structlog + run_tracker
+├── src/
+│   ├── pipeline/             # ingest + storage + quality + observability + CLI
+│   │   ├── cli.py            # Typer entrypoint
+│   │   ├── config.py         # pydantic-settings (env + YAML)
+│   │   ├── models.py         # pydantic v2 API response schemas
+│   │   ├── ingest/           # http, massive, coingecko, orchestrator
+│   │   ├── storage/          # bronze (Parquet), warehouse (DuckDB MERGE)
+│   │   ├── quality/          # pandera schemas + SQL assertions
+│   │   └── observability/    # structlog + run_tracker + perf
+│   └── analysis/             # returns, DCA, correlation, outputs, html_report
 ├── dbt/                      # profiles, models, tests, seeds, macros
 ├── tests/
 │   ├── unit/                 # pure math + edge cases
 │   ├── snapshot/             # golden-output regression
-│   └── fixtures/             # recorded API payloads + golden CSVs
+│   └── fixtures/             # golden CSVs + recorded API payloads (api_responses/)
 ├── docs/
 │   ├── architecture.md       # C4 context + container (Mermaid)
 │   ├── data_dictionary.md    # bronze/silver/gold column catalog
 │   └── decisions/            # ADRs 0001–0005
-├── scripts/                  # bootstrap_warehouse, seed_dim_date, record_fixtures
+├── scripts/                  # bootstrap_warehouse, seed_dim_date, record_fixtures, cron-run
 ├── data/                     # gitignored — bronze + warehouse.duckdb
-├── outputs/                  # committed — CSV + Parquet (Q1–Q4 tables)
-└── DATA_REPORTS/             # committed — data_analysis.md + data_analysis.html + static twin + performance_report.html
+├── logs/                     # gitignored — structlog JSON + cron stdout
+├── outputs/                  # gitignored — regenerated CSV + Parquet (Q1–Q4 tables)
+├── DATA_REPORTS/             # committed — data_analysis.md + data_analysis.html + static twin + performance_report.html
+├── EXTRAS/                   # extra content (notes, screenshots)
 ```
 
 ---
@@ -535,7 +482,7 @@ on `ruff` → `mypy --strict` → `pytest` → `dbt parse`.
 
 **dbt tests** — see [DQ gates](#dq-gates--four-layers-any-one-fails-the-pipeline). Run on every `make transform`, not just CI.
 
-**Recorded API fixtures — [tests/fixtures/api_responses/](tests/fixtures/api_responses/)**: real Massive/CoinGecko payloads captured by [record_fixtures.py](scripts/record_fixtures.py); replayed in unit tests so CI doesn't need live APIs.
+**API fixture replay — [tests/unit/test_ingest_fixtures.py](tests/unit/test_ingest_fixtures.py)**: drives `fetch_symbol` / `fetch_bitcoin` against `respx`-mocked Massive/CoinGecko endpoints loaded from `tests/fixtures/api_responses/*.json`. Catches payload-shape regressions (a renamed field, a type change) before they hit production. Refresh fixtures with [scripts/record_fixtures.py](scripts/record_fixtures.py) (needs a real `MASSIVE_API_KEY`); CI uses the committed fixtures so `MASSIVE_API_KEY=dummy-for-ci` is enough.
 
 ---
 
@@ -567,19 +514,18 @@ publish to a team-wide docs site.
 
 ## Known gaps
 
-Honest list of things a production deployment would want but the PoC does
-not yet cover. Each item has a suggested remediation path.
+What a production deployment would want next.
 
-| Area                 | Gap                                                                                                        | Where it bites                                                                                  | Remediation                                                                                                   |
-| -------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| **Data quality**     | No **accuracy** check — we validate shape and bounds but never cross-check a price against a second source | A silent Massive outage returning last-known-good would pass every gate                         | Cross-check today's CoinGecko BTC close against the prior-day row (and against the rolling 7-day median); alert on > 50 bps day-over-day divergence not explained by realised vol                           |
-| **Data quality**     | No **statistical anomaly detection** (z-score, day-over-day spike) — the hard `daily_return ∈ (−1, 1)` dbt test catches ≥100% daily moves but nothing subtler | A corrupt 3× price spike passes the bounds check                                                | Add a `abs(return) > 5σ` singular dbt test over a rolling 30-day window                                       |
-| **Data quality**     | No **producer-side contract**                                                                              | Massive renaming a field fails our pydantic, but we learn in prod, not at contract-publish time | Out of scope unless the provider cooperates; current implicit contract is [models.py](src/pipeline/models.py) |
-| **Schema evolution** | No migration tool — DDL changes are manual `ALTER TABLE`                                                   | Second deployment environment would drift                                                       | Add `alembic` (Python) or `dbt-ddl` macros; version silver DDL                                                |
-| **Schema evolution** | `dim_asset` is Type-1 (overwrites history)                                                                 | If a symbol's `source` changes we lose provenance                                               | Upgrade to SCD-2 with `valid_from` / `valid_to` columns; single-model change                                  |
-| **Testing**          | No **integration test** that runs ingest → silver → dbt end-to-end against a real DuckDB                   | A regression in the MERGE contract only shows up on first `make run`                            | Add `tests/integration/` that uses a `tmp_path` warehouse + recorded fixtures; gate in CI                     |
-| **Testing**          | No **performance regression test**                                                                         | A dbt model that goes from 1 s to 10 s wouldn't be caught                                       | Cheap: time `make run` in CI and fail if > Nx baseline                                                        |
-| **Observability**    | No **lineage-to-file** — `run_id` is in-row but we don't link to the exact bronze Parquet path             | Debugging "why does this silver row look wrong" requires path reconstruction                    | Add a `bronze_path` column to silver, or a `meta.fact_bronze_files` table                                     |
-| **Observability**    | No **dashboard** — `meta.*` tables are queryable but there's no UI                                         | On-call has to know SQL                                                                         | `make doctor` prints; a Grafana panel over DuckDB is the obvious next step                                    |
-| **Scalability**      | **Single-process** ingest                                                                                  | Dozens of providers × thousands of symbols would eventually saturate one event loop             | Split per-provider into separate workers; the per-provider client is already isolated                         |
-| **Performance**      | No **query plan inspection** for dbt models                                                                | A schema change could silently regress                                                          | `dbt compile` + `EXPLAIN ANALYZE` as a pre-merge check; not worth automating at 3k rows                       |
+| Area               | Gap                                                                                 | Remediation                                                                                                                                                 |
+| ------------------ | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **DQ — accuracy**  | No cross-source price reconciliation                                                | Diff today's BTC close vs. prior-day + rolling 7-day median; alert >50 bps unexplained drift                                                                |
+| **DQ — anomalies** | Bounds check (`daily_return ∈ (−1, 1)`) misses sub-100% spikes                      | Singular dbt test: `abs(return) > 5σ` over rolling 30d                                                                                                      |
+| **DQ — contract**  | No producer-side contract; pydantic is implicit                                     | Out of scope unless provider cooperates                                                                                                                     |
+| **Schema**         | No migration tool — manual `ALTER TABLE`                                            | `alembic` or `dbt-ddl` macros                                                                                                                               |
+| **Schema**         | `dim_asset` is Type-1 — updates overwrite, prior `source`/`price_completeness` lost | SCD-2: one row per asset _version_ with `valid_from`/`valid_to`; facts join on `date BETWEEN valid_from AND valid_to` so history keeps original attribution |
+| **Testing**        | No integration test (ingest → silver → dbt end-to-end)                              | `tests/integration/` with `tmp_path` warehouse + fixtures                                                                                                   |
+| **Testing**        | No perf regression test                                                             | Time `make run` in CI; fail if > N× baseline                                                                                                                |
+| **Observability**  | No bronze-file lineage in silver                                                    | Add `bronze_path` column or `meta.fact_bronze_files`                                                                                                        |
+| **Observability**  | No dashboard for `meta.*` tables                                                    | Grafana panel over DuckDB                                                                                                                                   |
+| **Scale**          | Single-process ingest                                                               | Per-provider workers; clients already isolated                                                                                                              |
+| **Performance**    | No query plan check on dbt models                                                   | `dbt compile` + `EXPLAIN ANALYZE` pre-merge                                                                                                                 |

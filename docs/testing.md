@@ -123,6 +123,6 @@ A pinned 400-day synthetic dataset flows through the full analysis pipeline; out
 
 ## What's explicitly not tested
 
-- **Live API correctness** — Massive / CoinGecko responses are mocked via recorded fixtures in [tests/fixtures/api_responses/](../tests/fixtures/api_responses/). Live-smoke is a manual `make run` step.
+- **Live API correctness** — Massive / CoinGecko payloads are replayed in [tests/unit/test_ingest_fixtures.py](../tests/unit/test_ingest_fixtures.py) via `respx` against snapshots in [tests/fixtures/api_responses/](../tests/fixtures/api_responses/). Catches payload-shape regressions (renamed fields, type changes) but not live-network behavior — refresh fixtures with `uv run python scripts/record_fixtures.py` (needs a real `MASSIVE_API_KEY`); live-smoke is a manual `make run` step.
 - **dbt model semantics** — covered by `dbt test` (unique/not_null/relationships + a singular calendar-gap test), not pytest.
 - **Plotly chart rendering** — we assert structural markers (headings, script tags, byte size) but not pixel output.

@@ -9,21 +9,24 @@ Module-level detail (C4 Code) lives inline with the source in
 ## C4 Level 1 — System context
 
 ```mermaid
-C4Context
-    title System context — Traditional Assets vs Bitcoin pipeline
+flowchart LR
+    Analyst([Analyst])
+    Operator([Operator])
+    Pipeline[<b>Data Platform PoC</b><br/>ingest · transform · analyze]
+    Massive[(Massive API<br/>FX · equities · SPY)]
+    CoinGecko[(CoinGecko API<br/>BTC close + volume)]
 
-    Person(analyst, "Analyst", "Reads DATA_REPORTS/data_analysis.html/md and the five CSV/Parquet outputs")
-    Person(ops, "Operator", "Runs make doctor; investigates DQ failures")
+    Analyst -->|reads reports| Pipeline
+    Operator -->|make doctor / backfill| Pipeline
+    Pipeline -->|HTTPS| Massive
+    Pipeline -->|HTTPS| CoinGecko
 
-    System(pipeline, "Data Platform PoC", "Ingests, transforms, and analyzes daily prices — compares traditional assets vs Bitcoin")
-
-    System_Ext(massive, "Massive API", "FX, equities, SPY — daily aggregates")
-    System_Ext(coingecko, "CoinGecko API", "BTC daily close + volume")
-
-    Rel(pipeline, massive, "Fetches daily OHLCV", "HTTPS / Bearer token")
-    Rel(pipeline, coingecko, "Fetches daily close + volume", "HTTPS / public")
-    Rel(analyst, pipeline, "Reads DATA_REPORTS/ + outputs/")
-    Rel(ops, pipeline, "Runs make doctor / make backfill")
+    classDef person fill:#1f3a5f,stroke:#4a7ab8,color:#fff
+    classDef system fill:#2d4a6e,stroke:#5a8bc4,color:#fff
+    classDef ext fill:#3a3a3a,stroke:#777,color:#ddd
+    class Analyst,Operator person
+    class Pipeline system
+    class Massive,CoinGecko ext
 ```
 
 ---
@@ -31,99 +34,84 @@ C4Context
 ## C4 Level 2 — Containers
 
 ```mermaid
-C4Container
-    title Container view
+flowchart LR
+    Operator([Operator])
+    Analyst([Analyst])
 
-    Person(analyst, "Analyst")
-    Person(ops, "Operator")
+    subgraph ext [External APIs]
+        Massive[(Massive)]
+        CoinGecko[(CoinGecko)]
+    end
 
-    System_Ext(massive, "Massive API")
-    System_Ext(coingecko, "CoinGecko API")
+    subgraph poc [Data Platform PoC]
+        CLI[Typer CLI]
+        Ingest[Ingest<br/>httpx · pydantic]
+        Bronze[(Bronze<br/>Parquet · fsspec)]
+        DBT[dbt-core]
+        DuckDB[(DuckDB<br/>silver · gold · meta)]
+        Analysis[Analysis<br/>polars]
+        Outputs[(outputs/ + DATA_REPORTS/)]
+    end
 
-    System_Boundary(pipeline, "Data Platform PoC") {
-        Container(cli, "Typer CLI (pipeline)", "Python 3.12", "ingest / transform / analyze / run / backfill-gaps / doctor")
-        Container(ingest, "Ingest module", "httpx + tenacity + pydantic v2", "Async fetch; per-provider semaphore; 429 backoff")
-        ContainerDb(bronze, "Bronze (Parquet)", "fsspec — local FS or s3://", "Hive-partitioned by source / asset_type / ingested_date; idempotent overwrite per day")
-        ContainerDb(warehouse, "DuckDB warehouse", "Embedded OLAP", "silver.stg_prices (MERGE); gold.* (dbt); meta.* (run + DQ history)")
-        Container(dbt, "dbt-core + dbt-duckdb", "SQL transformations", "silver views + gold star schema; tests; lineage docs")
-        Container(analysis, "Analysis module", "polars", "Reads gold.fact_daily_price + gold.fact_daily_metrics — windows, aggregates, simulations (DCA / lump-sum)")
-        ContainerDb(outputs, "Outputs", "Filesystem", "outputs/*.csv + *.parquet; DATA_REPORTS/data_analysis.md + data_analysis.html")
-        ContainerDb(logs, "Logs", "Filesystem", "structlog JSON lines")
-    }
+    Operator -->|make / cron| CLI
+    CLI --> Ingest
+    CLI --> DBT
+    CLI --> Analysis
+    Ingest -->|HTTPS| Massive
+    Ingest -->|HTTPS| CoinGecko
+    Ingest --> Bronze
+    Ingest -->|MERGE| DuckDB
+    DBT --> DuckDB
+    Analysis --> DuckDB
+    Analysis --> Outputs
+    Analyst --> Outputs
 
-    Rel(ops, cli, "Invokes via make / cron")
-    Rel(cli, ingest, "Orchestrates")
-    Rel(ingest, massive, "GET /v2/aggs/ticker/{sym}/range/1/day/{from}/{to}", "HTTPS")
-    Rel(ingest, coingecko, "GET /coins/bitcoin/market_chart/range", "HTTPS")
-    Rel(ingest, bronze, "Writes partitioned Parquet")
-    Rel(ingest, warehouse, "MERGE into silver.stg_prices")
-    Rel(cli, dbt, "dbt seed (if stale) + dbt run + dbt test")
-    Rel(dbt, warehouse, "Reads silver; writes gold.*")
-    Rel(cli, analysis, "Runs after transforms")
-    Rel(analysis, warehouse, "Reads gold.fact_daily_price + gold.fact_daily_metrics")
-    Rel(analysis, outputs, "Writes CSV / Parquet / report")
-    Rel(cli, logs, "JSON lines")
-    Rel(analyst, outputs, "Reads")
+    classDef person fill:#1f3a5f,stroke:#4a7ab8,color:#fff
+    classDef sys fill:#2d4a6e,stroke:#5a8bc4,color:#fff
+    classDef store fill:#3a5a3a,stroke:#6aa86a,color:#fff
+    classDef extcls fill:#3a3a3a,stroke:#777,color:#ddd
+    class Operator,Analyst person
+    class CLI,Ingest,DBT,Analysis sys
+    class Bronze,DuckDB,Outputs store
+    class Massive,CoinGecko extcls
 ```
+
+| Container | Tech | Role |
+| --- | --- | --- |
+| **Typer CLI** | Python 3.12 | Orchestrates ingest → transform → analyze; `make doctor`; backfills |
+| **Ingest** | httpx + tenacity + pydantic v2 | Async fetch, per-provider semaphore, 429 backoff |
+| **Bronze** | Parquet via fsspec | Hive-partitioned `source/asset_type/ingested_date`; idempotent overwrite |
+| **DuckDB** | Embedded OLAP | `silver.stg_prices` (MERGE), `gold.*` (dbt), `meta.*` (run + DQ history) |
+| **dbt-core** | dbt-duckdb adapter | Silver views, gold star schema, tests, lineage |
+| **Analysis** | polars | Reads gold facts; window aggregates; DCA / lump-sum simulations |
+| **Outputs** | Filesystem | `outputs/*.csv + *.parquet`; `DATA_REPORTS/*.md + *.html` |
 
 ---
 
 ## C4 Level 3 — Component view (ingest container)
 
-Solid arrow = calls / data flow. Dashed arrow = depends on / uses.
-
 ```mermaid
-flowchart TB
-    subgraph cli[pipeline/cli.py]
-        ingestcmd["ingest / backfill-gaps"]
-    end
+flowchart LR
+    CLI[cli.py<br/>ingest / backfill-gaps]
+    Orch[orchestrator.run_ingest]
+    Fetchers[per-source fetchers<br/>massive · coingecko · synthetic]
+    Client[client.ProviderClient<br/>httpx + tenacity + semaphore]
+    Bronze[storage.bronze.write_bronze]
+    Silver[storage.warehouse.merge_into_silver]
 
-    subgraph orch[pipeline/ingest/orchestrator.py]
-        runingest["run_ingest()"]
-        resolve["resolve_range() — explicit &gt; incremental &gt; lookback"]
-        fetchall["_fetch_all() — group by source, gather concurrently"]
-        writebronze["_write_bronze_partitions() — bucket by source, asset_type"]
-    end
+    CLI --> Orch
+    Orch -->|fetch| Fetchers
+    Orch -->|write| Bronze
+    Orch -->|merge| Silver
+    Fetchers --> Client
 
-    subgraph fetchers[pipeline/ingest/ — per-source fetchers]
-        massivefn["massive.fetch_symbol() — paginate next_url; UTC ms→date"]
-        cgfn["coingecko.fetch_bitcoin() — /coins/bitcoin/market_chart/range"]
-        synthfn["synthetic.fetch_usd() — emit close=1.0 per day"]
-    end
-
-    subgraph httpclient[pipeline/ingest/client.py]
-        provider["provider() — async ctx mgr yielding ProviderClient"]
-        clientcls["ProviderClient — httpx.AsyncClient + asyncio.Semaphore + tenacity"]
-    end
-
-    subgraph storage[pipeline/storage/]
-        bronzeio["bronze.write_bronze() — pyarrow + fsspec (local FS or s3://)"]
-        warehousefn["warehouse.merge_into_silver() — INSERT … ON CONFLICT DO UPDATE"]
-    end
-
-    subgraph obs[pipeline/observability/]
-        runtracker["RunContext — writes meta.pipeline_runs"]
-        logging["get_logger() — structlog JSON"]
-    end
-
-    ingestcmd --> runingest
-    runingest -->|1. window| resolve
-    runingest -->|2. fetch| fetchall
-    runingest -->|3. write| writebronze
-    runingest -->|4. merge| warehousefn
-    runingest -. tracks .-> runtracker
-    runingest -. logs .-> logging
-
-    fetchall --> massivefn
-    fetchall --> cgfn
-    fetchall --> synthfn
-    fetchall -. opens .-> provider
-    provider --> clientcls
-    massivefn -. uses .-> clientcls
-    cgfn -. uses .-> clientcls
-
-    writebronze --> bronzeio
+    classDef sys fill:#2d4a6e,stroke:#5a8bc4,color:#fff
+    classDef io fill:#3a5a3a,stroke:#6aa86a,color:#fff
+    class CLI,Orch,Fetchers,Client sys
+    class Bronze,Silver io
 ```
+
+`run_ingest` runs four steps in order: **resolve window** (explicit > incremental > lookback) → **fetch** (per-provider, gathered concurrently) → **write bronze** (partitioned Parquet) → **merge silver** (`INSERT … ON CONFLICT DO UPDATE`). Run state persists to `meta.pipeline_runs` via `RunContext`; structured events log to `logs/pipeline-*.log` via `get_logger()`.
 
 ---
 
@@ -154,14 +142,14 @@ sequenceDiagram
         CoinGecko-->>Ingest: {prices, total_volumes}
     end
     Ingest->>Bronze: write_bronze (overwrite by ingested_date)
-    Ingest->>Silver: merge_into_silver — INSERT … ON CONFLICT DO UPDATE (last-write-wins)
-    CLI->>dbt: dbt seed (if stale) + dbt run + dbt test
+    Ingest->>Silver: merge_into_silver — INSERT ... ON CONFLICT DO UPDATE (last-write-wins)
+    CLI->>dbt: dbt seed (if stale), then dbt run, then dbt test
     dbt->>Silver: SELECT * (staging view)
     dbt->>Gold: dim_asset_type, dim_asset, dim_date, fact_daily_price, fact_daily_metrics
     CLI->>Analysis: run_analysis()
-    Analysis->>Gold: SELECT fact_daily_price (close series) + fact_daily_metrics (precomputed returns / vol)
-    Note over Analysis: No metric recomputation —<br/>analysis filters / aggregates gold,<br/>then runs DCA + lump-sum simulations.
-    Analysis->>Outputs: outputs/*.csv + *.parquet; DATA_REPORTS/data_analysis.md + data_analysis.html
+    Analysis->>Gold: SELECT fact_daily_price (close) and fact_daily_metrics (returns, vol)
+    Note over Analysis: No metric recomputation —<br/>analysis filters / aggregates gold,<br/>then runs DCA / lump-sum simulations.
+    Analysis->>Outputs: outputs/*.csv, outputs/*.parquet, DATA_REPORTS/data_analysis.{md,html}
     CLI-->>Cron: exit 0 (or non-zero on failure)
 ```
 
